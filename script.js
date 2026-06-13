@@ -584,7 +584,7 @@ function extractSpecsFromDescription(description) {
     else if (/(cherry|oem|mt3|sa|kag|kak|dcs|gmk)/.test(line)) {
       specs.profile = line.match(/(cherry|oem|mt3|sa|kag|kak|dcs|gmk)/i)?.[0] || 'Custom profile';
     }
-    else if (/(iso|ansi)/.test(line)) {
+else if (/(iso|ansi)/.test(line)) {
       if (/iso.*ansi|ansi.*iso|iso ?\/ ?ansi|iso ?& ?ansi/.test(line)) {
         specs.layout = 'ISO/ANSI';
       } else if (/iso/.test(line)) {
@@ -608,14 +608,6 @@ function extractSpecsFromDescription(description) {
         specs.print = 'Face print';
       }
     }
-  }
-
-  function assign(label, value) {
-    const l = label.toLowerCase();
-    if (l.includes('key')) specs.keys = value;
-    else if (l.includes('print') || l.includes('legend')) specs.print = value;
-    else if (l.includes('layout')) specs.layout = value;
-    else if (l.includes('profile') || l.includes('height')) specs.profile = value;
   }
 
   return specs;
