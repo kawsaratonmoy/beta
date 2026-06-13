@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html class="dark" lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+  <meta name="description" content="" id="meta-description">
+  <title></title>
+  <link rel="icon" type="image/x-icon" href="logo t.png"> 
+  <link rel="canonical" id="canonical-link" href="">
+  
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+  
+  <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+  <script id="tailwind-config">
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          "colors": {
+            "primary-fixed-dim": "#dbb8ff",
+            "on-primary": "#3f2160",
+            "on-secondary-fixed": "#181a2b",
+            "secondary": "#c4c5db",
+            "error-container": "#93000a",
+            "background": "#0c1322",
+            "surface-container-lowest": "#070e1d",
+            "surface-container": "#191f2f",
+            "on-surface": "#dce2f7",
+            "on-secondary-container": "#b3b3c9",
+            "inverse-primary": "#6f5092",
+            "surface-tint": "#dbb8ff",
+            "on-tertiary-fixed-variant": "#404758",
+            "surface-variant": "#2e3545",
+            "surface": "#0c1322",
+            "on-secondary": "#2d2f40",
+            "on-primary-fixed": "#29074a",
+            "secondary-fixed": "#e1e1f7",
+            "on-error-container": "#ffdad6",
+            "surface-container-low": "#141b2b",
+            "on-tertiary": "#293040",
+            "secondary-fixed-dim": "#c4c5db",
+            "surface-container-highest": "#2e3545",
+            "surface-bright": "#323949",
+            "outline": "#968e9a",
+            "tertiary-fixed-dim": "#c0c6db",
+            "on-tertiary-fixed": "#141b2b",
+            "on-surface-variant": "#cdc3d0",
+            "error": "#ffb4ab",
+            "primary-fixed": "#efdbff",
+            "surface-container-high": "#232a3a",
+            "primary": "#ecd7ff",
+            "surface-dim": "#0c1322",
+            "primary-container": "#d8b4fe",
+            "outline-variant": "#4a454f",
+            "on-secondary-fixed-variant": "#444558",
+            "on-primary-fixed-variant": "#573878",
+            "on-background": "#dce2f7",
+            "on-tertiary-container": "#495061",
+            "tertiary-fixed": "#dce2f7",
+            "tertiary-container": "#bcc2d7",
+            "on-error": "#690005",
+            "inverse-surface": "#dce2f7",
+            "on-primary-container": "#604283",
+            "inverse-on-surface": "#293040",
+            "secondary-container": "#444558",
+            "tertiary": "#d8def3"
+          },
+          "borderRadius": {
+            "DEFAULT": "0.125rem",
+            "lg": "0.25rem",
+            "xl": "0.5rem",
+            "full": "0.75rem"
+          },
+          "fontFamily": {
+            "headline": ["Space Grotesk"],
+            "display": ["Space Grotesk"],
+            "body": ["Inter"],
+            "label": ["Inter"]
+          }
+        },
+      },
+    }
+  </script>
+  <style>
+    .kinetic-grid {
+      background-image: linear-gradient(to right, rgba(236, 215, 255, 0.05) 1px, transparent 1px),
+                        linear-gradient(to bottom, rgba(236, 215, 255, 0.05) 1px, transparent 1px);
+      background-size: 40px 40px;
+    }
+    .glass-panel {
+      background: rgba(25, 31, 47, 0.6);
+      backdrop-filter: blur(12px);
+    }
+    .material-symbols-outlined {
+      font-variation-settings: 'FILL' 0, 'wght' 300, 'GRAD' 0, 'opsz' 24;
+    }
+  </style>
+
+  <script type="module">
+    import { initializeApp } from 'https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js';
+    import { getAuth } from 'https://www.gstatic.com/firebasejs/9.23.0/firebase-auth.js';
+    import { getFirestore } from 'https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js';
+  </script>
+  <script type="module" src="script.js"></script>
+</head>
+
+<body class="bg-surface font-body text-on-surface selection:bg-primary-container selection:text-on-primary-container">
+
+  <header class="bg-[#0c1322]/60 backdrop-blur-xl sticky top-0 z-50 border-b border-white/5">
+    <div class="flex justify-between items-center px-8 py-4 w-full max-w-screen-2xl mx-auto font-['Space_Grotesk'] tracking-tight">
+      <a href="index.html" class="text-2xl font-bold tracking-tighter text-transparent bg-clip-text bg-gradient-to-br from-purple-200 to-purple-400">
+        The Geek Shop
+      </a>
+      <nav class="hidden md:flex items-center space-x-8">
+        <a class="text-slate-400 hover:text-purple-200 transition-colors" href="products.html">Products</a>
+        <a class="text-slate-400 hover:text-purple-200 transition-colors" href="status.html">Order Status</a>
+      </nav>
+      <div class="flex items-center space-x-6 text-purple-300">
+        <a id="cart-link" class="flex items-center space-x-1 hover:text-purple-200 transition-colors cursor-pointer active:scale-95 duration-150">
+          <span class="material-symbols-outlined">shopping_cart</span>
+          <span class="text-sm font-bold font-display bg-surface-container-highest px-2 py-0.5 rounded-full" id="cart-count">0</span>
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <main class="relative kinetic-grid min-h-screen">
+    <section id="product-section" class="max-w-screen-2xl mx-auto px-8 py-12 lg:py-20 grid grid-cols-1 lg:grid-cols-12 gap-16">
+      
+      <div class="lg:col-span-7 space-y-6 product-images">
+        <div class="relative group aspect-square lg:aspect-[4/3] bg-surface-container-low overflow-hidden rounded-xl border border-outline-variant/10">
+          <img id="main-image" alt="" class="w-full h-full object-cover transform transition-transform duration-700"/>
+          <div class="absolute inset-0 bg-gradient-to-t from-surface/40 to-transparent pointer-events-none"></div>
+        </div>
+        <div id="thumbnail-gallery" class="thumbnail-gallery grid grid-cols-4 gap-4"></div>
+      </div>
+
+      <div class="lg:col-span-5 flex flex-col justify-center space-y-8 product-info">
+        <div class="space-y-4">
+          <div id="product-badges" class="badges flex flex-wrap gap-3"></div>
+          <h1 id="product-name" class="text-4xl lg:text-5xl font-display font-bold tracking-tighter leading-none text-transparent bg-clip-text bg-gradient-to-r from-on-surface to-primary-fixed-dim"></h1>
+          <div id="product-color" class="text-slate-400 font-display text-lg"></div>
+          <div id="product-price" class="price text-primary text-3xl font-display font-bold"></div>
+        </div>
+
+        <div class="space-y-6">
+          <p id="product-spec" class="text-on-surface-variant text-base leading-relaxed font-light"></p>
+          
+          <div id="order-row" class="order-row flex flex-col gap-4 pt-2"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="product-description-section max-w-screen-2xl mx-auto px-8 py-16 border-t border-outline-variant/10">
+      <div class="max-w-3xl space-y-6">
+        <h2 class="text-3xl font-display font-bold tracking-tight">Description</h2>
+        <div id="product-detailed-desc" class="description-content text-on-surface-variant leading-relaxed font-light space-y-4"></div>
+      </div>
+    </section>
+
+    <section class="max-w-screen-2xl mx-auto px-8 py-16 border-t border-outline-variant/10 mb-24">
+      <div class="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-12">
+        <div class="space-y-2">
+          <span class="text-[10px] font-bold uppercase tracking-[0.4em] text-primary">Lab Recommendations</span>
+          <h2 class="text-4xl font-display font-bold">Other Products</h2>
+        </div>
+        <a href="products.html" class="flex items-center gap-2 text-primary font-bold tracking-widest text-[10px] uppercase hover:gap-4 transition-all">
+          View Catalog <span class="material-symbols-outlined text-sm">arrow_forward</span>
+        </a>
+      </div>
+      <div id="other-products" class="product-list new-hot-list grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8"></div>
+    </section>
+  </main>
+
+  <div id="image-viewer" class="image-viewer fixed inset-0 z-[100] bg-black/90 backdrop-blur-md hidden flex items-center justify-center p-4">
+    <button id="close-viewer" class="close-viewer absolute top-6 right-6 text-slate-400 hover:text-white transition-colors text-4xl">&times;</button>
+    <img id="viewer-img" src="" alt="" class="max-w-full max-h-[90vh] object-contain rounded-lg">
+  </div>
+
+  <div id="checkout-modal" class="modal fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm hidden flex items-center justify-center p-4 overflow-y-auto">
+    <div class="card modal-content bg-surface-container border border-outline-variant/20 rounded-2xl w-full max-w-xl max-h-[90vh] overflow-y-auto p-6 lg:p-8 shadow-2xl">
+      <div class="modal-header flex justify-between items-center border-b border-outline-variant/10 pb-4 mb-6">
+        <h2 class="text-2xl font-display font-bold text-transparent bg-clip-text bg-gradient-to-r from-on-surface to-purple-300">Checkout</h2>
+        <button id="close-modal-btn" type="button" class="px-4 py-1.5 bg-surface-variant text-slate-300 rounded-lg text-xs hover:bg-surface-variant/80 transition-all font-display font-bold uppercase tracking-wider">Close</button>
+      </div>
+      
+      <form id="checkout-form" class="form space-y-5 text-sm">
+        <input type="hidden" id="co-product-id">
+        <input type="hidden" id="co-unit-price-raw">
+        <input type="hidden" id="co-available-stock">
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label class="block text-xs uppercase tracking-wider text-slate-400 mb-1.5 font-semibold">Product Name</label>
+            <input id="co-product-name" readonly class="w-full bg-surface-container-low border border-outline-variant/20 rounded-xl px-4 py-2.5 text-slate-300 focus:outline-none focus:ring-0">
+          </div>
+          <div>
+            <label class="block text-xs uppercase tracking-wider text-slate-400 mb-1.5 font-semibold">Color</label>
+            <input id="co-color" readonly class="w-full bg-surface-container-low border border-outline-variant/20 rounded-xl px-4 py-2.5 text-slate-300 focus:outline-none focus:ring-0">
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label class="block text-xs uppercase tracking-wider text-slate-400 mb-1.5 font-semibold">Price (tk)</label>
+            <input id="co-price" readonly class="w-full bg-surface-container-low border border-outline-variant/20 rounded-xl px-4 py-2.5 text-slate-300 focus:outline-none focus:ring-0">
+          </div>
+          <div>
+            <label class="block text-xs uppercase tracking-wider text-slate-400 mb-1.5 font-semibold">Quantity</label>
+            <input id="co-qty" type="number" min="1" value="1" class="w-full bg-surface-container-high border border-outline-variant/40 rounded-xl px-4 py-2.5 text-on-surface focus:ring-1 focus:ring-primary focus:border-primary">
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label class="block text-xs uppercase tracking-wider text-slate-400 mb-1.5 font-semibold">Delivery</label>
+            <input id="co-delivery" readonly class="w-full bg-surface-container-low border border-outline-variant/20 rounded-xl px-4 py-2.5 text-slate-300 focus:outline-none focus:ring-0">
+          </div>
+          <div>
+            <label class="block text-xs uppercase tracking-wider text-slate-400 mb-1.5 font-semibold">Total (tk)</label>
+            <input id="co-total" readonly class="w-full bg-surface-container-low border border-outline-variant/20 rounded-xl px-4 py-2.5 text-primary font-bold font-display text-base focus:outline-none focus:ring-0">
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label class="block text-xs uppercase tracking-wider text-slate-400 mb-1.5 font-semibold">Name</label>
+            <input id="co-name" required class="w-full bg-surface-container-high border border-outline-variant/40 rounded-xl px-4 py-2.5 text-on-surface focus:ring-1 focus:ring-primary focus:border-primary">
+          </div>
+          <div>
+            <label class="block text-xs uppercase tracking-wider text-slate-400 mb-1.5 font-semibold">Phone</label>
+            <input id="co-phone" type="tel" required class="w-full bg-surface-container-high border border-outline-variant/40 rounded-xl px-4 py-2.5 text-on-surface focus:ring-1 focus:ring-primary focus:border-primary">
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-xs uppercase tracking-wider text-slate-400 mb-1.5 font-semibold">Address</label>
+          <textarea id="co-address" required rows="2" class="w-full bg-surface-container-high border border-outline-variant/40 rounded-xl px-4 py-2.5 text-on-surface focus:ring-1 focus:ring-primary focus:border-primary"></textarea>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label class="block text-xs uppercase tracking-wider text-slate-400 mb-1.5 font-semibold">Payment Method</label>
+            <select id="co-payment" required class="w-full bg-surface-container-high border border-outline-variant/40 rounded-xl px-4 py-2.5 text-on-surface focus:ring-1 focus:ring-primary focus:border-primary">
+              <option value="">Select</option>
+              <option value="Cash on Delivery">Cash on Delivery</option>
+              <option value="Bkash">Bkash</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs uppercase tracking-wider text-slate-400 mb-1.5 font-semibold">Pay to (Send money)</label>
+            <input id="co-payment-number" readonly class="w-full bg-surface-container-low border border-outline-variant/20 rounded-xl px-4 py-2.5 text-slate-300 focus:outline-none focus:ring-0">
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label class="block text-xs uppercase tracking-wider text-slate-400 mb-1.5 font-semibold">Pay Now (tk)</label>
+            <input id="co-pay-now" readonly class="w-full bg-surface-container-low border border-outline-variant/20 rounded-xl px-4 py-2.5 text-slate-300 focus:outline-none focus:ring-0">
+          </div>
+          <div>
+            <label class="block text-xs uppercase tracking-wider text-slate-400 mb-1.5 font-semibold">Due Amount (tk)</label>
+            <input id="co-due-amount" readonly class="w-full bg-surface-container-low border border-outline-variant/20 rounded-xl px-4 py-2.5 text-slate-300 focus:outline-none focus:ring-0">
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-xs uppercase tracking-wider text-slate-400 mb-1.5 font-semibold">Transaction ID</label>
+          <input id="co-txn" class="w-full bg-surface-container-high border border-outline-variant/40 rounded-xl px-4 py-2.5 text-on-surface focus:ring-1 focus:ring-primary focus:border-primary" placeholder="Enter Bkash TXN ID if applicable">
+        </div>
+
+        <div class="flex items-start pt-1">
+          <input type="checkbox" id="co-policy" required class="mt-1 rounded bg-surface-container-high border-outline-variant/40 text-primary focus:ring-primary focus:ring-offset-0">
+          <label for="co-policy" class="ml-2.5 text-xs text-slate-400 leading-normal">
+            I agree to the <a href="status.html" class="text-primary hover:underline">Order Policy</a>
+          </label>
+        </div>
+
+        <div>
+          <p id="co-note" class="muted text-xs text-purple-300/80 bg-purple-950/20 rounded-lg p-3 border border-purple-900/20"></p>
+        </div>
+
+        <button id="place-order-btn" type="submit" class="w-full py-4 bg-gradient-to-br from-primary to-primary-container text-on-primary-fixed font-display font-bold text-base rounded-xl hover:shadow-[0_0_20px_rgba(236,215,255,0.2)] transition-all active:scale-95 duration-150 mt-2">
+          Place Order
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <div id="cart-slider" class="cart-slider fixed top-0 right-0 h-full w-full max-w-md bg-surface-container/95 backdrop-blur-xl border-l border-white/5 shadow-2xl z-50 transform translate-x-full transition-transform duration-300 flex flex-col hidden">
+    <div class="p-6 border-b border-outline-variant/10 flex justify-between items-center">
+      <h2 class="text-xl font-display font-bold">Shopping Cart</h2>
+      <button id="close-cart" class="close-viewer text-2xl text-slate-400 hover:text-white transition-colors">&times;</button>
+    </div>
+    
+    <div id="cart-items" class="cart-items flex-1 overflow-y-auto p-6 space-y-4"></div>
+    <div id="cart-empty" class="muted text-center py-12 text-slate-400 hidden">Your cart is empty</div>
+    
+    <div class="p-6 bg-surface-container-low border-t border-outline-variant/10 space-y-4">
+      <div id="cart-total" class="cart-total text-right text-lg font-display"><strong>Total: ৳0</strong></div>
+      <button id="checkout-cart" class="checkout-cart-btn w-full py-4 bg-gradient-to-br from-primary to-primary-container text-on-primary-fixed font-display font-bold text-center rounded-xl hover:shadow-[0_0_20px_rgba(236,215,255,0.2)] transition-all">
+        Checkout
+      </button>
+    </div>
+  </div>
+
+  <div id="cart-checkout-modal" class="modal fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm hidden flex items-center justify-center p-4 overflow-y-auto">
+    <div class="card modal-content bg-surface-container border border-outline-variant/20 rounded-2xl w-full max-w-xl max-h-[90vh] overflow-y-auto p-6 lg:p-8 shadow-2xl">
+      <div class="modal-header flex justify-between items-center border-b border-outline-variant/10 pb-4 mb-6">
+        <h2 class="text-2xl font-display font-bold text-transparent bg-clip-text bg-gradient-to-r from-on-surface to-purple-300">Checkout (Cart)</h2>
+        <button id="cart-close-modal-btn" type="button" class="px-4 py-1.5 bg-surface-variant text-slate-300 rounded-lg text-xs hover:bg-surface-variant/80 transition-all font-display font-bold uppercase tracking-wider">Close</button>
+      </div>
+
+      <form id="cart-checkout-form" class="form space-y-5 text-sm">
+        <div id="cart-co-items" class="space-y-2 max-h-32 overflow-y-auto border border-outline-variant/10 rounded-xl p-3 bg-surface-container-low"></div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label class="block text-xs uppercase tracking-wider text-slate-400 mb-1.5 font-semibold">Delivery Fee</label>
+            <input id="cart-co-delivery" readonly class="w-full bg-surface-container-low border border-outline-variant/20 rounded-xl px-4 py-2.5 text-slate-300 focus:outline-none focus:ring-0">
+          </div>
+          <div>
+            <label class="block text-xs uppercase tracking-wider text-slate-400 mb-1.5 font-semibold">Total Amount</label>
+            <input id="cart-co-total" readonly class="w-full bg-surface-container-low border border-outline-variant/20 rounded-xl px-4 py-2.5 text-primary font-bold font-display text-base focus:outline-none focus:ring-0">
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label class="block text-xs uppercase tracking-wider text-slate-400 mb-1.5 font-semibold">Name</label>
+            <input id="cart-co-name" required class="w-full bg-surface-container-high border border-outline-variant/40 rounded-xl px-4 py-2.5 text-on-surface focus:ring-1 focus:ring-primary focus:border-primary">
+          </div>
+          <div>
+            <label class="block text-xs uppercase tracking-wider text-slate-400 mb-1.5 font-semibold">Phone</label>
+            <input id="cart-co-phone" type="tel" required class="w-full bg-surface-container-high border border-outline-variant/40 rounded-xl px-4 py-2.5 text-on-surface focus:ring-1 focus:ring-primary focus:border-primary">
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-xs uppercase tracking-wider text-slate-400 mb-1.5 font-semibold">Address</label>
+          <textarea id="cart-co-address" required rows="2" class="w-full bg-surface-container-high border border-outline-variant/40 rounded-xl px-4 py-2.5 text-on-surface focus:ring-1 focus:ring-primary focus:border-primary"></textarea>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label class="block text-xs uppercase tracking-wider text-slate-400 mb-1.5 font-semibold">Payment Method</label>
+            <select id="cart-co-payment" required class="w-full bg-surface-container-high border border-outline-variant/40 rounded-xl px-4 py-2.5 text-on-surface focus:ring-1 focus:ring-primary focus:border-primary">
+              <option value="">Select</option>
+              <option value="Cash on Delivery">Cash on Delivery</option>
+              <option value="Bkash">Bkash</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs uppercase tracking-wider text-slate-400 mb-1.5 font-semibold">Pay to</label>
+            <input id="cart-co-payment-number" readonly class="w-full bg-surface-container-low border border-outline-variant/20 rounded-xl px-4 py-2.5 text-slate-300 focus:outline-none focus:ring-0">
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label class="block text-xs uppercase tracking-wider text-slate-400 mb-1.5 font-semibold">Pay Now (tk)</label>
+            <input id="cart-co-pay-now" readonly class="w-full bg-surface-container-low border border-outline-variant/20 rounded-xl px-4 py-2.5 text-slate-300 focus:outline-none focus:ring-0">
+          </div>
+          <div>
+            <label class="block text-xs uppercase tracking-wider text-slate-400 mb-1.5 font-semibold">Due Amount (tk)</label>
+            <input id="cart-co-due-amount" readonly class="w-full bg-surface-container-low border border-outline-variant/20 rounded-xl px-4 py-2.5 text-slate-300 focus:outline-none focus:ring-0">
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-xs uppercase tracking-wider text-slate-400 mb-1.5 font-semibold">Transaction ID</label>
+          <input id="cart-co-txn" class="w-full bg-surface-container-high border border-outline-variant/40 rounded-xl px-4 py-2.5 text-on-surface focus:ring-1 focus:ring-primary focus:border-primary" placeholder="Enter Transaction ID">
+        </div>
+
+        <div class="flex items-start pt-1">
+          <input type="checkbox" id="cart-co-policy" required class="mt-1 rounded bg-surface-container-high border-outline-variant/40 text-primary focus:ring-primary focus:ring-offset-0">
+          <label for="cart-co-policy" class="ml-2.5 text-xs text-slate-400 leading-normal">
+            I agree to the <a href="status.html" class="text-primary hover:underline">Order Policy</a>
+          </label>
+        </div>
+
+        <div>
+          <p id="cart-co-note" class="muted text-xs text-purple-300/80 bg-purple-950/20 rounded-lg p-3 border border-purple-900/20"></p>
+        </div>
+
+        <button id="cart-place-order-btn" type="submit" class="w-full py-4 bg-gradient-to-br from-primary to-primary-container text-on-primary-fixed font-display font-bold text-base rounded-xl hover:shadow-[0_0_20px_rgba(236,215,255,0.2)] transition-all active:scale-95 duration-150 mt-2">
+          Place Order
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <nav class="fixed bottom-0 left-0 w-full flex justify-around items-center px-4 py-3 md:hidden bg-[#0c1322]/90 backdrop-blur-lg border-t border-white/5 z-50">
+    <a class="flex flex-col items-center justify-center text-slate-500 px-4 py-1" href="index.html">
+      <span class="material-symbols-outlined">home</span>
+      <span class="text-[10px] font-bold uppercase tracking-tighter">Home</span>
+    </a>
+    <a class="flex flex-col items-center justify-center bg-purple-500/20 text-purple-200 rounded-xl px-4 py-1" href="products.html">
+      <span class="material-symbols-outlined">grid_view</span>
+      <span class="text-[10px] font-bold uppercase tracking-tighter">Shop</span>
+    </a>
+    <a class="flex flex-col items-center justify-center text-slate-500 px-4 py-1" href="status.html">
+      <span class="material-symbols-outlined">description</span>
+      <span class="text-[10px] font-bold uppercase tracking-tighter">Status</span>
+    </a>
+  </nav>
+
+  <footer class="bg-slate-950 w-full py-12 px-8 border-t border-white/5">
+    <div class="flex flex-col md:flex-row justify-between items-center gap-8 max-w-screen-2xl mx-auto font-['Inter'] text-xs tracking-widest text-slate-500">
+      <div class="font-['Space_Grotesk'] text-lg font-bold text-slate-200 uppercase">
+        The Geek Shop
+      </div>
+      <div class="flex gap-6">
+        <a href="https://www.facebook.com/thegeek.shop0" target="_blank" class="text-slate-500 hover:text-purple-300 transition-colors">Facebook</a>
+        <a href="https://www.instagram.com/thegeek.shop0" target="_blank" class="text-slate-500 hover:text-purple-300 transition-colors">Instagram</a>
+        <a href="https://wa.me/01960902526" target="_blank" class="text-slate-500 hover:text-purple-300 transition-colors">WhatsApp</a>
+      </div>
+      <div class="opacity-80">
+        © All rights reserved by The Geek Shop
+      </div>
+    </div>
+  </footer>
+
+</body>
+</html>
