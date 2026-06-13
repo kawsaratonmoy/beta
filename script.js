@@ -593,7 +593,7 @@ else if (/(iso|ansi)/.test(line)) {
         specs.layout = 'ANSI';
       }
     }
-    else if (/(print|legend|dye.?sub|double.?shot|shine.?through|shine through|side print|face print)/.test(line)) {
+   else if (/(print|legend|dye.?sub|double.?shot|shine.?through|shine through|side print|face print)/.test(line)) {
       if (/multi ?legend|multi-legend/.test(line)) {
         specs.print = 'Multi legend';
       } else if (/dye.?sub/.test(line)) {
@@ -611,6 +611,29 @@ else if (/(iso|ansi)/.test(line)) {
   }
 
   return specs;
+}
+
+// Ensure the product finding snippet runs safely back inside its proper block structure:
+async function handleProductResolution(urlSlug) {
+  const products = await loadProducts();
+  let product = null;
+  for (const p of products) {
+    const sameName = products.filter(other => other.name.toLowerCase() === p.name.toLowerCase());
+    let slug = p.name.toLowerCase().replace(/\s+/g, '-');
+    if (sameName.length > 1 && p.color) {
+      slug += '-' + p.color.toLowerCase().replace(/\s+/g, '-');
+    }
+    if (slug === urlSlug) {
+      product = p;
+      break;
+    }
+  }
+
+  if (!product) {
+    alert('Product not found');
+    return null;
+  }
+  return product;
 }
 
 function getUniqueSpecs(products, specKey) {
