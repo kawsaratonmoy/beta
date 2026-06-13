@@ -926,7 +926,7 @@ async function initHomePage() {
   if (!product) {
     alert('Product not found');
     return;
-  }
+  
 
   document.title = product.metaTitle || product.name;
   document.querySelector('#meta-description').setAttribute('content', product.metaDescription || '');
