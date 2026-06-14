@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html class="dark" lang="en">
+<head>
+    <meta charset="utf-8"/>
+    <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+    <title>Checkout | The Geek Shop</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .signature-gradient { background: linear-gradient(135deg, #ecd7ff 0%, #d8b4fe 100%); }
+        .glass-panel { background: rgba(12, 19, 34, 0.6); backdrop-filter: blur(12px); }
+    </style>
+</head>
+<body class="bg-[#0c1322] text-[#dce2f7] font-sans">
+    <main class="max-w-4xl mx-auto px-6 py-20">
+        <h1 class="font-bold text-4xl mb-12 tracking-tighter">DISPATCH PROTOCOL</h1>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-12">
+            <div class="space-y-8">
+                <div class="space-y-2">
+                    <label class="text-[10px] text-gray-400 uppercase tracking-widest">Full Name</label>
+                    <input id="co-name" class="w-full bg-[#070e1d] border-b-2 border-gray-700 py-3 px-4 outline-none focus:border-purple-400" type="text">
+                </div>
+                <div class="space-y-2">
+                    <label class="text-[10px] text-gray-400 uppercase tracking-widest">Shipping Destination</label>
+                    <textarea id="co-address" class="w-full bg-[#070e1d] border-b-2 border-gray-700 py-3 px-4 outline-none focus:border-purple-400" rows="2"></textarea>
+                </div>
+                <div class="space-y-2">
+                    <label class="text-[10px] text-gray-400 uppercase tracking-widest">Payment Method</label>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div id="method-bkash" class="p-4 border-2 border-purple-400 bg-purple-900/20 rounded-xl cursor-pointer">
+                            <p class="font-bold">Bkash</p>
+                        </div>
+                        <div id="method-cod" class="p-4 border-2 border-gray-700 rounded-xl cursor-pointer">
+                            <p class="font-bold">COD</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="bg-[#191f2f] p-10 rounded-2xl">
+                <h3 class="text-xl font-bold mb-6">Order Summary</h3>
+                <div id="co-items-list" class="space-y-4 mb-8"></div>
+                <div class="border-t border-gray-700 pt-6">
+                    <div class="flex justify-between items-center text-lg font-bold">
+                        <span>Grand Total</span>
+                        <span id="co-total" class="text-purple-300 text-2xl">$0.00</span>
+                    </div>
+                    <button id="final-finalize-btn" class="w-full signature-gradient text-[#29074a] font-bold py-5 rounded-xl mt-6 uppercase">
+                        Finalize Order
+                    </button>
+                </div>
+            </div>
+        </div>
+    </main>
+    <script type="module" src="script.js"></script>
+</body>
+</html>
