@@ -15,59 +15,22 @@
       theme: {
         extend: {
           "colors": {
-            "inverse-surface": "#dce2f7",
-            "surface-container-highest": "#2e3545",
-            "surface-container-lowest": "#070e1d",
-            "tertiary": "#d8def3",
             "primary": "#ecd7ff",
-            "on-secondary-container": "#b3b3c9",
-            "inverse-primary": "#6f5092",
-            "error-container": "#93000a",
-            "on-primary-container": "#604283",
+            "primary-container": "#d8b4fe",
+            "on-primary-fixed": "#29074a",
             "secondary": "#c4c5db",
             "on-secondary": "#2d2f40",
-            "on-surface": "#dce2f7",
-            "surface-container": "#191f2f",
-            "on-tertiary-container": "#495061",
-            "surface-container-low": "#141b2b",
-            "primary-container": "#d8b4fe",
-            "tertiary-container": "#bcc2d7",
-            "tertiary-fixed-dim": "#c0c6db",
-            "on-primary-fixed-variant": "#573878",
-            "surface-container-high": "#232a3a",
-            "surface-tint": "#dbb8ff",
-            "secondary-container": "#444558",
-            "on-tertiary-fixed": "#141b2b",
-            "error": "#ffb4ab",
-            "secondary-fixed-dim": "#c4c5db",
-            "secondary-fixed": "#e1e1f7",
-            "surface-bright": "#323949",
-            "on-secondary-fixed-variant": "#444558",
             "background": "#070c17",
-            "on-primary-fixed": "#29074a",
-            "on-primary": "#3f2160",
-            "on-secondary-fixed": "#181a2b",
-            "surface": "#0c1322",
-            "primary-fixed": "#efdbff",
-            "on-error-container": "#ffdad6",
-            "outline-variant": "#4a454f",
-            "surface-variant": "#2e3545",
-            "on-tertiary-fixed-variant": "#404758",
-            "on-tertiary": "#293040",
-            "on-error": "#690005",
-            "tertiary-fixed": "#dce2f7",
             "on-background": "#dce2f7",
+            "surface": "#0c1322",
+            "on-surface": "#dce2f7",
+            "surface-container-lowest": "#070e1d",
+            "surface-container-low": "#141b2b",
+            "surface-container": "#191f2f",
+            "surface-container-high": "#232a3a",
+            "surface-container-highest": "#2e3545",
             "outline": "#968e9a",
-            "on-surface-variant": "#cdc3d0",
-            "surface-dim": "#0c1322",
-            "primary-fixed-dim": "#dbb8ff",
-            "inverse-on-surface": "#293040"
-          },
-          "borderRadius": {
-            "DEFAULT": "0.125rem",
-            "lg": "0.25rem",
-            "xl": "0.5rem",
-            "full": "0.75rem"
+            "outline-variant": "#4a454f"
           },
           "fontFamily": {
             "headline": ["Space Grotesk"],
@@ -80,9 +43,7 @@
     }
   </script>
   <style>
-    .material-symbols-outlined {
-      font-variation-settings: 'FILL' 0, 'wght' 300, 'GRAD' 0, 'opsz' 24;
-    }
+    .material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 300, 'GRAD' 0, 'opsz' 24; }
     .data-stream {
       background-image: 
         linear-gradient(0deg, transparent 24%, rgba(236, 215, 255, 0.03) 25%, rgba(236, 215, 255, 0.03) 26%, transparent 27%, transparent 74%, rgba(236, 215, 255, 0.03) 75%, rgba(236, 215, 255, 0.03) 76%, transparent 77%, transparent),
@@ -90,45 +51,24 @@
       background-size: 40px 40px;
       animation: grid-pulse 10s ease-in-out infinite;
     }
-    @keyframes grid-pulse {
-      0%, 100% { opacity: 0.5; }
-      50% { opacity: 1; }
-    }
-    .ticker-container {
-      width: 100%;
-      overflow: hidden;
-      white-space: nowrap;
-    }
-    .ticker-content {
-      display: inline-block;
-      animation: ticker 30s linear infinite;
-    }
-    @keyframes ticker {
-      0% { transform: translateX(0); }
-      100% { transform: translateX(-50%); }
-    }
+    @keyframes grid-pulse { 0%, 100% { opacity: 0.5; } 50% { opacity: 1; } }
+    .ticker-container { width: 100%; overflow: hidden; white-space: nowrap; }
+    .ticker-content { display: inline-block; animation: ticker 30s linear infinite; }
+    @keyframes ticker { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }
     .tech-grid-overlay {
       background-image: 
         linear-gradient(rgba(236, 215, 255, 0.1) 1px, transparent 1px),
         linear-gradient(90deg, rgba(236, 215, 255, 0.1) 1px, transparent 1px);
       background-size: 8px 8px;
     }
-    .scanner-glow {
-      box-shadow: 0 0 20px rgba(236, 215, 255, 0.05), inset 0 0 15px rgba(236, 215, 255, 0.02);
-    }
+    .scanner-glow { box-shadow: 0 0 20px rgba(236, 215, 255, 0.05), inset 0 0 15px rgba(236, 215, 255, 0.02); }
   </style>
 
-  <script type="module">
-    import { initializeApp } from 'https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js';
-    import { getAuth } from 'https://www.gstatic.com/firebasejs/9.23.0/firebase-auth.js';
-    import { getFirestore } from 'https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js';
-  </script>
   <script type="module" src="script.js"></script>
 </head>
 
 <body class="bg-background text-on-background font-body selection:bg-primary-container selection:text-on-primary-container min-h-screen flex flex-col">
   
-  <!-- TopNavBar -->
   <nav class="fixed top-0 w-full z-50 bg-background/80 backdrop-blur-xl border-b border-white/5">
     <div class="flex justify-between items-center px-8 py-4 w-full max-w-7xl mx-auto">
       <a href="index.html" class="text-2xl font-bold tracking-tighter text-primary font-headline">THE GEEK SHOP</a>
@@ -146,7 +86,6 @@
   </nav>
 
   <main class="pt-16 pb-20 data-stream relative flex-grow overflow-x-hidden">
-    <!-- Terminal Header Section -->
     <header class="max-w-7xl mx-auto px-8 py-16 md:py-24 relative">
       <div class="border-l-2 border-primary/30 pl-8 relative z-10">
         <div class="flex items-center gap-3 mb-4">
@@ -156,182 +95,100 @@
         <h1 class="text-5xl md:text-8xl font-headline font-bold tracking-tighter mb-6 uppercase">Track Gear</h1>
         <p class="text-lg text-on-surface-variant max-w-xl font-light leading-relaxed">System awaiting communication tether. Enter registered numeric identifier to synchronize shipment metadata.</p>
       </div>
-      
-      <!-- Ticker Overlay -->
       <div class="absolute top-24 -right-12 rotate-90 origin-left hidden xl:block">
         <div class="ticker-container bg-surface-container-low/50 py-1 border-x border-primary/20 backdrop-blur-sm w-[400px]">
           <div class="ticker-content text-[10px] font-label text-primary/40 uppercase tracking-widest">
-            SYSTEM READY... SCANNING LATTICE... SHIPMENT INCOMING... CACHE UPDATED... 0X2F4A9... SYSTEM READY... SCANNING LATTICE...
+            SYSTEM READY... SCANNING LATTICE... SHIPMENT INCOMING... CACHE UPDATED... 0X2F4A9... SYSTEM READY...
           </div>
         </div>
       </div>
     </header>
 
-    <!-- Authenticator / Search Section Form Hook -->
-    <section class="max-w-7xl mx-auto px-8 mb-20">
+    <section class="max-w-7xl mx-auto px-8 mb-16">
       <div class="bg-surface-container-lowest/80 border border-primary/10 scanner-glow p-1 rounded-sm relative group overflow-hidden">
-        <!-- Corner Accents -->
         <div class="absolute top-0 left-0 w-4 h-4 border-t-2 border-l-2 border-primary/40"></div>
         <div class="absolute top-0 right-0 w-4 h-4 border-t-2 border-r-2 border-primary/40"></div>
         <div class="absolute bottom-0 left-0 w-4 h-4 border-b-2 border-l-2 border-primary/40"></div>
         <div class="absolute bottom-0 right-0 w-4 h-4 border-b-2 border-r-2 border-primary/40"></div>
         
-        <!-- Track Order Form -->
-        <form id="track-order-form" class="relative z-10 flex flex-col md:flex-row p-6 md:p-8 gap-6 items-center">
+        <form id="status-form" class="relative z-10 flex flex-col md:flex-row p-6 md:p-8 gap-6 items-center">
           <div class="w-full md:flex-1 relative">
-            <label for="phone-input" class="block text-[10px] uppercase tracking-[0.25em] text-outline mb-3 font-label font-bold flex items-center gap-2">
-              <span class="material-symbols-outlined text-[14px]">fingerprint</span>
-              Authenticator Phone Number
+            <label class="block text-[10px] uppercase tracking-[0.25em] text-outline mb-3 font-label font-bold flex items-center gap-2">
+              <span class="material-symbols-outlined text-[14px]">fingerprint</span> Authenticator Phone Number
             </label>
             <div class="relative">
-              <input id="phone-input" class="w-full bg-surface-container-low/50 border border-white/5 text-primary p-5 focus:ring-1 focus:ring-primary/30 focus:border-primary/50 transition-all duration-300 text-2xl font-headline placeholder:text-outline-variant/30 tracking-widest" placeholder="017xxxxxxxx" type="tel" required />
+              <input id="phone-input" class="w-full bg-surface-container-low/50 border border-white/5 text-primary p-5 focus:ring-1 focus:ring-primary/30 focus:border-primary/50 transition-all duration-300 text-2xl font-headline placeholder:text-outline-variant/30 tracking-widest" placeholder="01XXXXXXXXX" type="tel" required />
               <div class="absolute right-4 top-1/2 -translate-y-1/2 opacity-20">
                 <span class="material-symbols-outlined text-primary">sensors</span>
               </div>
             </div>
           </div>
           <button type="submit" class="w-full md:w-auto h-[74px] px-12 bg-primary text-on-primary-fixed font-headline font-bold uppercase tracking-[0.2em] text-sm hover:bg-primary-container active:scale-[0.98] transition-all flex items-center justify-center gap-3 mt-auto shadow-[0_0_30px_-10px_rgba(236,215,255,0.4)]">
-            <span class="material-symbols-outlined">bolt</span>
-            Execute Search
+            <span class="material-symbols-outlined">bolt</span> Execute Search
           </button>
         </form>
       </div>
     </section>
 
-    <!-- Logistics Grid Container mapped to script.js -->
-    <section class="max-w-7xl mx-auto px-8">
-      <div class="flex flex-col md:flex-row md:items-end justify-between mb-10 gap-4">
-        <div>
-          <h2 class="text-3xl font-headline font-bold text-on-surface uppercase tracking-tight">Active Deployments</h2>
-          <div class="h-1 w-20 bg-primary mt-2"></div>
+    <section class="max-w-7xl mx-auto px-8 mb-20">
+      <div id="order-result" class="w-full">
         </div>
-        <div class="flex items-center gap-4 text-outline font-label text-[11px] font-bold uppercase tracking-[0.2em]">
-          <span class="flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-primary animate-pulse"></span> STATUS STREAM LIVE</span>
-        </div>
-      </div>
+    </section>
 
-      <!-- Target Grid for JavaScript Injection (Empty, waiting for script.js) -->
-      <div id="status-result" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-8">
-      </div>
-
-      <!-- Terminal Standby Message -->
-      <div class="mt-16 text-center py-20 border border-dashed border-primary/20 bg-primary/5 relative overflow-hidden group">
+    <section class="max-w-7xl mx-auto px-8 mb-10 grid grid-cols-1 lg:grid-cols-4 gap-6">
+      
+      <div class="lg:col-span-1 bg-surface-container-low/50 border border-white/5 p-6 rounded-xl relative overflow-hidden">
         <div class="absolute inset-0 tech-grid-overlay opacity-10"></div>
-        <div class="relative z-10">
-          <div class="inline-block p-4 rounded-full bg-primary/10 mb-4 group-hover:rotate-180 transition-transform duration-700">
-            <span class="material-symbols-outlined text-primary text-4xl">radar</span>
+        <div class="relative z-10 flex flex-col h-full">
+          <h3 class="text-primary font-headline font-bold uppercase tracking-widest text-sm mb-4 flex items-center gap-2"><span class="material-symbols-outlined text-[18px]">campaign</span> System Notice</h3>
+          <p class="text-xs text-on-surface-variant font-light leading-relaxed mb-4">Please ensure all order details are entered correctly before confirmation. Double-check your <b>address</b>, <b>contact number</b>, and <b>product selection</b> to avoid delays.</p>
+        </div>
+      </div>
+
+      <div class="lg:col-span-2 bg-surface-container-lowest/80 border border-white/5 p-6 rounded-xl relative overflow-hidden">
+        <h2 class="text-xl font-headline font-bold text-on-surface mb-6 uppercase tracking-tight flex items-center gap-2"><span class="material-symbols-outlined text-primary">gavel</span> Shipping & Return Protocols</h2>
+        
+        <div class="space-y-6 text-xs text-on-surface-variant font-light leading-relaxed max-h-[300px] overflow-y-auto pr-4 custom-scrollbar">
+          <div>
+            <h3 class="font-bold text-primary mb-2 uppercase tracking-widest text-[10px]">1. Processing & Dispatch</h3>
+            <ul class="list-disc pl-4 space-y-1">
+              <li>Orders placed before <b>12:00 PM</b> are dispatched the <b>same business day</b>.</li>
+              <li>Orders placed after <b>6:00 PM</b> dispatch the <b>next business day</b>.</li>
+            </ul>
           </div>
-          <p class="text-primary font-headline text-lg uppercase tracking-widest">Standing by for queries...</p>
-          <p class="text-outline font-label text-[10px] mt-2 uppercase">End of visible records // Protocol v2.4.0</p>
+          <div>
+            <h3 class="font-bold text-primary mb-2 uppercase tracking-widest text-[10px]">2. Delivery Timelines</h3>
+            <ul class="list-disc pl-4 space-y-1">
+              <li><b>Regular Orders:</b> 3–7 business days</li>
+              <li><b>Pre-Orders:</b> 20–40 business days</li>
+            </ul>
+          </div>
+          <div>
+            <h3 class="font-bold text-primary mb-2 uppercase tracking-widest text-[10px]">3. Pre-Order & Return Policy</h3>
+            <ul class="list-disc pl-4 space-y-1">
+              <li>A <b>25% advance</b> is required for Pre-orders (Cannot be cancelled or refunded).</li>
+              <li>Returns accepted within <b>7 days</b> only if defective upon delivery.</li>
+              <li>A clear <b>unboxing video</b> recorded from opening is mandatory for all claims.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="lg:col-span-1 bg-surface-container-low/50 border border-white/5 p-6 rounded-xl relative overflow-hidden">
+        <div class="absolute inset-0 tech-grid-overlay opacity-10"></div>
+        <div class="relative z-10 flex flex-col h-full">
+          <h3 class="text-primary font-headline font-bold uppercase tracking-widest text-sm mb-4 flex items-center gap-2"><span class="material-symbols-outlined text-[18px]">support_agent</span> Comm Node</h3>
+          <div class="space-y-4 mt-2">
+            <a href="https://www.facebook.com/thegeek.shop0/" target="_blank" class="flex items-center gap-3 text-xs text-on-surface-variant hover:text-primary transition-colors"><span class="material-symbols-outlined text-[16px]">public</span> Facebook Hub</a>
+            <a href="https://www.instagram.com/thegeek.shop0/" target="_blank" class="flex items-center gap-3 text-xs text-on-surface-variant hover:text-primary transition-colors"><span class="material-symbols-outlined text-[16px]">photo_camera</span> Instagram Feed</a>
+            <a href="https://wa.me/01960902526" target="_blank" class="flex items-center gap-3 text-xs text-on-surface-variant hover:text-primary transition-colors"><span class="material-symbols-outlined text-[16px]">chat</span> WhatsApp Secure</a>
+          </div>
         </div>
       </div>
     </section>
+
   </main>
 
-  <!-- Cart Slider Panel -->
-  <div id="cart-slider" class="cart-slider fixed top-0 right-0 h-full w-full max-w-md bg-surface-container/95 backdrop-blur-xl border-l border-white/5 shadow-2xl z-[100] transform translate-x-full transition-transform duration-300 flex flex-col hidden">
-    <div class="p-6 border-b border-outline-variant/10 flex justify-between items-center">
-      <h2 class="text-xl font-display font-bold">Shopping Cart</h2>
-      <button id="close-cart" class="text-2xl text-slate-400 hover:text-white transition-colors">&times;</button>
-    </div>
-    <div id="cart-items" class="flex-1 overflow-y-auto p-6 space-y-4"></div>
-    <div id="cart-empty" class="muted text-center py-12 text-slate-400 hidden">Your cart is empty</div>
-    <div class="p-6 bg-surface-container-low border-t border-outline-variant/10 space-y-4">
-      <div id="cart-total" class="text-right text-lg font-display"><strong>Total: ৳0</strong></div>
-      <button id="checkout-cart" class="w-full py-4 bg-gradient-to-br from-primary to-primary-container text-on-primary-fixed font-display font-bold text-center rounded-xl hover:shadow-[0_0_20px_rgba(236,215,255,0.2)] transition-all">
-        Proceed to Checkout
-      </button>
-    </div>
-  </div>
-
-  <!-- Cart Checkout Modal -->
-  <div id="cart-checkout-modal" class="fixed inset-0 z-[110] bg-slate-950/80 backdrop-blur-sm hidden flex items-center justify-center p-4 overflow-y-auto">
-    <div class="bg-surface-container border border-outline-variant/20 rounded-2xl w-full max-w-xl max-h-[90vh] overflow-y-auto p-6 lg:p-8 shadow-2xl">
-      <div class="flex justify-between items-center border-b border-outline-variant/10 pb-4 mb-6">
-        <h2 class="text-2xl font-display font-bold text-transparent bg-clip-text bg-gradient-to-r from-on-surface to-purple-300">Checkout (Cart)</h2>
-        <button id="cart-close-modal-btn" type="button" class="px-4 py-1.5 bg-surface-variant text-slate-300 rounded-lg text-xs hover:bg-surface-variant/80 transition-all font-display font-bold uppercase tracking-wider">Close</button>
-      </div>
-
-      <form id="cart-checkout-form" class="space-y-5 text-sm">
-        <div id="cart-co-items" class="space-y-2 max-h-32 overflow-y-auto border border-outline-variant/10 rounded-xl p-3 bg-surface-container-low"></div>
-
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div>
-            <label class="block text-xs uppercase tracking-wider text-slate-400 mb-1.5 font-semibold">Delivery Fee</label>
-            <input id="cart-co-delivery" readonly class="w-full bg-surface-container-low border border-outline-variant/20 rounded-xl px-4 py-2.5 text-slate-300 focus:outline-none focus:ring-0">
-          </div>
-          <div>
-            <label class="block text-xs uppercase tracking-wider text-slate-400 mb-1.5 font-semibold">Total Amount</label>
-            <input id="cart-co-total" readonly class="w-full bg-surface-container-low border border-outline-variant/20 rounded-xl px-4 py-2.5 text-primary font-bold font-display text-base focus:outline-none focus:ring-0">
-          </div>
-        </div>
-
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div>
-            <label class="block text-xs uppercase tracking-wider text-slate-400 mb-1.5 font-semibold">Name</label>
-            <input id="cart-co-name" required class="w-full bg-surface-container-high border border-outline-variant/40 rounded-xl px-4 py-2.5 text-on-surface focus:ring-1 focus:ring-primary focus:border-primary">
-          </div>
-          <div>
-            <label class="block text-xs uppercase tracking-wider text-slate-400 mb-1.5 font-semibold">Phone</label>
-            <input id="cart-co-phone" type="tel" required class="w-full bg-surface-container-high border border-outline-variant/40 rounded-xl px-4 py-2.5 text-on-surface focus:ring-1 focus:ring-primary focus:border-primary">
-          </div>
-        </div>
-
-        <div>
-          <label class="block text-xs uppercase tracking-wider text-slate-400 mb-1.5 font-semibold">Address</label>
-          <textarea id="cart-co-address" required rows="2" class="w-full bg-surface-container-high border border-outline-variant/40 rounded-xl px-4 py-2.5 text-on-surface focus:ring-1 focus:ring-primary focus:border-primary"></textarea>
-        </div>
-
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div>
-            <label class="block text-xs uppercase tracking-wider text-slate-400 mb-1.5 font-semibold">Payment Method</label>
-            <select id="cart-co-payment" required class="w-full bg-surface-container-high border border-outline-variant/40 rounded-xl px-4 py-2.5 text-on-surface focus:ring-1 focus:ring-primary focus:border-primary">
-              <option value="">Select</option>
-              <option value="Cash on Delivery">Cash on Delivery</option>
-              <option value="Bkash">Bkash</option>
-            </select>
-          </div>
-          <div>
-            <label class="block text-xs uppercase tracking-wider text-slate-400 mb-1.5 font-semibold">Pay to</label>
-            <input id="cart-co-payment-number" readonly class="w-full bg-surface-container-low border border-outline-variant/20 rounded-xl px-4 py-2.5 text-slate-300 focus:outline-none focus:ring-0">
-          </div>
-        </div>
-
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div>
-            <label class="block text-xs uppercase tracking-wider text-slate-400 mb-1.5 font-semibold">Pay Now (tk)</label>
-            <input id="cart-co-pay-now" readonly class="w-full bg-surface-container-low border border-outline-variant/20 rounded-xl px-4 py-2.5 text-slate-300 focus:outline-none focus:ring-0">
-          </div>
-          <div>
-            <label class="block text-xs uppercase tracking-wider text-slate-400 mb-1.5 font-semibold">Due Amount (tk)</label>
-            <input id="cart-co-due-amount" readonly class="w-full bg-surface-container-low border border-outline-variant/20 rounded-xl px-4 py-2.5 text-slate-300 focus:outline-none focus:ring-0">
-          </div>
-        </div>
-
-        <div>
-          <label class="block text-xs uppercase tracking-wider text-slate-400 mb-1.5 font-semibold">Transaction ID</label>
-          <input id="cart-co-txn" class="w-full bg-surface-container-high border border-outline-variant/40 rounded-xl px-4 py-2.5 text-on-surface focus:ring-1 focus:ring-primary focus:border-primary" placeholder="Enter Transaction ID">
-        </div>
-
-        <div class="flex items-start pt-1">
-          <input type="checkbox" id="cart-co-policy" required class="mt-1 rounded bg-surface-container-high border-outline-variant/40 text-primary focus:ring-primary focus:ring-offset-0">
-          <label for="cart-co-policy" class="ml-2.5 text-xs text-slate-400 leading-normal">
-            I agree to the Order Policy
-          </label>
-        </div>
-
-        <div>
-          <p id="cart-co-note" class="text-xs text-purple-300/80 bg-purple-950/20 rounded-lg p-3 border border-purple-900/20"></p>
-        </div>
-
-        <button id="cart-place-order-btn" type="submit" class="w-full py-4 bg-gradient-to-br from-primary to-primary-container text-on-primary-fixed font-display font-bold text-base rounded-xl hover:shadow-[0_0_20px_rgba(236,215,255,0.2)] transition-all active:scale-95 duration-150 mt-2">
-          Place Order
-        </button>
-      </form>
-    </div>
-  </div>
-
-  <!-- Mobile Bottom Nav -->
   <nav class="fixed bottom-0 left-0 w-full flex justify-around items-center px-4 py-3 md:hidden bg-[#0c1322]/90 backdrop-blur-lg border-t border-white/5 z-50">
     <a class="flex flex-col items-center justify-center text-slate-500 px-4 py-1" href="index.html">
       <span class="material-symbols-outlined">home</span>
@@ -341,23 +198,17 @@
       <span class="material-symbols-outlined">grid_view</span>
       <span class="text-[10px] font-bold uppercase tracking-tighter mt-1">Shop</span>
     </a>
-    <a class="flex flex-col items-center justify-center bg-purple-500/20 text-purple-200 rounded-xl px-4 py-1" href="status.html">
+    <a class="flex flex-col items-center justify-center bg-primary/20 text-primary rounded-xl px-4 py-1" href="status.html">
       <span class="material-symbols-outlined">description</span>
       <span class="text-[10px] font-bold uppercase tracking-tighter mt-1">Status</span>
     </a>
   </nav>
 
-  <!-- Footer -->
   <footer class="w-full py-12 mt-auto bg-surface-container-lowest border-t border-white/5 pb-24 md:pb-12">
     <div class="flex flex-col md:flex-row justify-between items-center px-8 gap-8 max-w-7xl mx-auto">
       <div class="flex flex-col gap-1 text-center md:text-left">
         <div class="text-xl font-headline font-black text-on-surface tracking-tighter uppercase">The Geek Shop</div>
         <div class="text-[9px] font-label text-outline uppercase tracking-widest">Terminal Build 0xAF92 // 2024</div>
-      </div>
-      <div class="flex gap-10">
-        <a class="text-outline hover:text-primary transition-colors font-label uppercase tracking-[0.3em] text-[10px]" href="https://www.facebook.com/thegeek.shop0" target="_blank">Facebook</a>
-        <a class="text-outline hover:text-primary transition-colors font-label uppercase tracking-[0.3em] text-[10px]" href="https://www.instagram.com/thegeek.shop0" target="_blank">Instagram</a>
-        <a class="text-outline hover:text-primary transition-colors font-label uppercase tracking-[0.3em] text-[10px]" href="https://wa.me/01960902526" target="_blank">WhatsApp</a>
       </div>
       <div class="text-outline font-label uppercase tracking-[0.2em] text-[9px] border border-white/5 px-4 py-2">
         © ALL RIGHTS RESERVED
@@ -365,5 +216,247 @@
     </div>
   </footer>
 
+  <div id="cart-slider" class="fixed top-0 right-0 h-full w-full max-w-md bg-surface-container/95 backdrop-blur-xl border-l border-white/5 shadow-2xl z-[100] transform translate-x-full transition-transform duration-300 flex flex-col hidden">
+    <div class="p-6 border-b border-outline-variant/10 flex justify-between items-center">
+      <h2 class="text-xl font-display font-bold">Shopping Cart</h2>
+      <button id="close-cart" class="text-2xl text-slate-400 hover:text-white transition-colors">&times;</button>
+    </div>
+    <div id="cart-items" class="flex-1 overflow-y-auto p-6 space-y-4"></div>
+    <div id="cart-empty" class="text-center py-12 text-slate-400 hidden">Your cart is empty</div>
+    <div class="p-6 bg-surface-container-low border-t border-outline-variant/10 space-y-4">
+      <div id="cart-total" class="text-right text-lg font-display"><strong>Total: ৳0</strong></div>
+      <button id="checkout-cart" class="w-full py-4 bg-gradient-to-br from-primary to-primary-container text-on-primary-fixed font-display font-bold text-center rounded-xl hover:shadow-[0_0_20px_rgba(236,215,255,0.2)] transition-all">Proceed to Checkout</button>
+    </div>
+  </div>
+
+  <div id="cart-checkout-modal" class="fixed inset-0 z-[110] bg-slate-950/80 backdrop-blur-sm hidden flex items-center justify-center p-4 overflow-y-auto">
+    <div class="bg-surface-container border border-outline-variant/20 rounded-2xl w-full max-w-xl max-h-[90vh] overflow-y-auto p-6 lg:p-8 shadow-2xl">
+      <div class="flex justify-between items-center border-b border-outline-variant/10 pb-4 mb-6">
+        <h2 class="text-2xl font-display font-bold text-primary">Checkout</h2>
+        <button id="cart-close-modal-btn" type="button" class="px-4 py-1.5 bg-surface-variant text-slate-300 rounded-lg text-xs hover:bg-surface-variant/80 transition-all font-display font-bold uppercase tracking-wider">Close</button>
+      </div>
+      <form id="cart-checkout-form" class="space-y-5 text-sm">
+        <div id="cart-co-items" class="space-y-2 max-h-32 overflow-y-auto border border-outline-variant/10 rounded-xl p-3 bg-surface-container-low"></div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div><label class="block text-xs uppercase tracking-wider text-slate-400 mb-1.5 font-semibold">Delivery Fee</label><input id="cart-co-delivery" readonly class="w-full bg-surface-container-low border border-outline-variant/20 rounded-xl px-4 py-2.5 text-slate-300 focus:outline-none"></div>
+          <div><label class="block text-xs uppercase tracking-wider text-slate-400 mb-1.5 font-semibold">Total Amount</label><input id="cart-co-total" readonly class="w-full bg-surface-container-low border border-outline-variant/20 rounded-xl px-4 py-2.5 text-primary font-bold focus:outline-none"></div>
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div><label class="block text-xs uppercase tracking-wider text-slate-400 mb-1.5 font-semibold">Name</label><input id="cart-co-name" required class="w-full bg-surface-container-high border border-outline-variant/40 rounded-xl px-4 py-2.5 text-on-surface"></div>
+          <div><label class="block text-xs uppercase tracking-wider text-slate-400 mb-1.5 font-semibold">Phone</label><input id="cart-co-phone" type="tel" required class="w-full bg-surface-container-high border border-outline-variant/40 rounded-xl px-4 py-2.5 text-on-surface"></div>
+        </div>
+        <div><label class="block text-xs uppercase tracking-wider text-slate-400 mb-1.5 font-semibold">Address</label><textarea id="cart-co-address" required rows="2" class="w-full bg-surface-container-high border border-outline-variant/40 rounded-xl px-4 py-2.5 text-on-surface"></textarea></div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div><label class="block text-xs uppercase tracking-wider text-slate-400 mb-1.5 font-semibold">Payment Method</label>
+            <select id="cart-co-payment" required class="w-full bg-surface-container-high border border-outline-variant/40 rounded-xl px-4 py-2.5 text-on-surface">
+              <option value="">Select</option><option value="Cash on Delivery">Cash on Delivery</option><option value="Bkash">Bkash</option>
+            </select>
+          </div>
+          <div><label class="block text-xs uppercase tracking-wider text-slate-400 mb-1.5 font-semibold">Pay to</label><input id="cart-co-payment-number" readonly class="w-full bg-surface-container-low border border-outline-variant/20 rounded-xl px-4 py-2.5 text-slate-300 focus:outline-none"></div>
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div><label class="block text-xs uppercase tracking-wider text-slate-400 mb-1.5 font-semibold">Pay Now (tk)</label><input id="cart-co-pay-now" readonly class="w-full bg-surface-container-low border border-outline-variant/20 rounded-xl px-4 py-2.5 text-slate-300 focus:outline-none"></div>
+          <div><label class="block text-xs uppercase tracking-wider text-slate-400 mb-1.5 font-semibold">Due Amount (tk)</label><input id="cart-co-due-amount" readonly class="w-full bg-surface-container-low border border-outline-variant/20 rounded-xl px-4 py-2.5 text-slate-300 focus:outline-none"></div>
+        </div>
+        <div><label class="block text-xs uppercase tracking-wider text-slate-400 mb-1.5 font-semibold">Transaction ID</label><input id="cart-co-txn" class="w-full bg-surface-container-high border border-outline-variant/40 rounded-xl px-4 py-2.5 text-on-surface"></div>
+        <div class="flex items-start pt-1"><input type="checkbox" id="cart-co-policy" required class="mt-1 rounded bg-surface-container-high border-outline-variant/40 text-primary"><label class="ml-2.5 text-xs text-slate-400">I agree to the Order Policy</label></div>
+        <div><p id="cart-co-note" class="text-xs text-purple-300/80 bg-purple-950/20 rounded-lg p-3 border border-purple-900/20"></p></div>
+        <button id="cart-place-order-btn" type="submit" class="w-full py-4 bg-primary text-on-primary-fixed font-bold rounded-xl mt-2">Place Order</button>
+      </form>
+    </div>
+  </div>
+
+  <script type="module">
+    import { initializeApp } from 'https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js';
+    import { getFirestore, collection, query, where, getDocs, orderBy } from 'https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js';
+    import { firebaseConfig } from './config.js';
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+
+    const statusOrder = ['Pending', 'Processing', 'Dispatched', 'Delivered', 'Cancelled'];
+
+    document.getElementById('status-form').addEventListener('submit', async e => {
+      e.preventDefault();
+      const phone = document.getElementById('phone-input').value.trim();
+      if (!phone) return;
+
+      const result = document.getElementById('order-result');
+      // Terminal style loading state
+      result.innerHTML = `
+        <div class="text-center py-20 border border-dashed border-primary/20 bg-primary/5 relative overflow-hidden">
+          <div class="absolute inset-0 tech-grid-overlay opacity-10"></div>
+          <div class="relative z-10 animate-pulse">
+            <span class="material-symbols-outlined text-primary text-4xl mb-2">sync</span>
+            <p class="text-primary font-headline uppercase tracking-widest text-sm">Synchronizing Database...</p>
+          </div>
+        </div>
+      `;
+
+      try {
+        const q = query(collection(db, 'orders'), where('phone', '==', phone), orderBy('timeISO', 'desc'));
+        const snap = await getDocs(q);
+
+        result.innerHTML = '';
+        if (snap.empty) {
+          result.innerHTML = `
+            <div class="text-center py-12 border border-dashed border-outline-variant/40 bg-surface-container-low/50 relative overflow-hidden">
+              <span class="material-symbols-outlined text-outline text-4xl mb-2">search_off</span>
+              <p class="text-outline font-headline uppercase tracking-widest text-sm">No active logs found for ${phone}</p>
+            </div>
+          `;
+          return;
+        }
+
+        const prodSnap = await getDocs(collection(db, 'products'));
+        const prodMap = {};
+        prodSnap.docs.forEach(d => { prodMap[d.id] = d.data(); });
+
+        const grid = document.createElement('div');
+        grid.className = 'grid grid-cols-1 lg:grid-cols-2 gap-8';
+
+        snap.docs.forEach(doc => {
+          const order = doc.data();
+          const cancelled = order.status === 'Cancelled';
+          const curStat = order.status;
+          const curIdx = statusOrder.indexOf(curStat);
+          const isDelivered = curStat === 'Delivered';
+
+          const isMulti = order.items && Array.isArray(order.items) && order.items.length > 0;
+          const items = isMulti ? order.items : [{
+            productId: order.productId,
+            productName: order.productName || 'Unknown Product',
+            color: order.color || '',
+            quantity: order.quantity || 1,
+            wasPreOrder: order.wasPreOrder || false
+          }];
+
+          const hasPreOrderItem = items.some(item => item.wasPreOrder === true);
+
+          let deliveryText = '';
+          if (isDelivered) {
+            const deliveredDate = order.deliveredAt ? new Date(order.deliveredAt).toLocaleDateString('en-GB') : 'N/A';
+            deliveryText = `<strong class="text-green-400">Delivered on: ${deliveredDate}</strong>`;
+          } else {
+            const days = hasPreOrderItem ? '20–40 days' : '3–7 days';
+            deliveryText = `Est. Time: <strong class="text-primary">${days}</strong>`;
+          }
+
+          let productHTML = '';
+          items.forEach((item, index) => {
+            const prod = prodMap[item.productId] || {};
+            const currentIsPreOrder = prod.availability === 'Pre Order';
+            const avail = item.wasPreOrder ? 'Pre-Order' : (currentIsPreOrder ? 'Pre-Order' : 'In Stock');
+
+            productHTML += `
+              <div class="flex flex-col gap-1 mb-4 ${index < items.length - 1 ? 'border-b border-white/5 pb-4' : ''}">
+                <h3 class="text-lg font-headline font-bold text-on-surface leading-none">${item.productName}</h3>
+                <p class="text-[10px] font-label text-outline uppercase tracking-widest">Qty: ${item.quantity} // ${item.color || 'Base'} // ${avail}</p>
+                <p class="text-[10px] font-label text-outline uppercase tracking-widest">${deliveryText}</p>
+              </div>
+            `;
+          });
+
+          const stepsInfo = [
+            { name: 'Pending', icon: 'inventory_2' },
+            { name: 'Processing', icon: 'settings' },
+            { name: 'Dispatched', icon: 'local_shipping' },
+            { name: 'Delivered', icon: 'check_circle' }
+          ];
+
+          let progressHTML = '';
+          if (cancelled) {
+             progressHTML = `
+               <div class="mb-10 text-center py-4 border border-red-900/30 bg-red-900/10 rounded-lg">
+                 <span class="text-red-400 font-headline font-bold uppercase tracking-widest text-sm">Order Cancelled</span>
+               </div>
+             `;
+          } else {
+             let progressWidth = '0%';
+             if (curIdx >= 1) progressWidth = '33%';
+             if (curIdx >= 2) progressWidth = '66%';
+             if (curIdx >= 3) progressWidth = '100%';
+
+             let mapIdx = curIdx > 3 ? 3 : curIdx; // Max out at delivered index
+
+             progressHTML = `
+             <div class="mb-10 relative">
+               <div class="absolute h-0.5 w-full bg-surface-container-high top-3"></div>
+               <div class="absolute h-0.5 bg-primary/40 top-3 transition-all duration-1000" style="width: ${progressWidth}"></div>
+               <div class="flex justify-between relative z-10">
+                 ${stepsInfo.map((step, idx) => {
+                    const isActive = mapIdx >= idx;
+                    const isCurrent = mapIdx === idx;
+                    return `
+                      <div class="flex flex-col items-center gap-2 ${!isActive ? 'opacity-30' : ''}">
+                        <div class="w-6 h-6 rounded-sm ${isActive ? 'bg-primary border-primary' : 'bg-surface-container-low border-outline-variant'} flex items-center justify-center border ${isCurrent ? 'shadow-[0_0_10px_rgba(236,215,255,0.5)]' : ''}">
+                          <span class="material-symbols-outlined text-[12px] ${isActive ? 'text-on-primary-fixed' : 'text-outline'}">${step.icon}</span>
+                        </div>
+                        <span class="text-[9px] font-label uppercase font-bold ${isActive ? 'text-primary' : 'text-outline'}">${step.name}</span>
+                      </div>
+                    `;
+                 }).join('')}
+               </div>
+             </div>
+             `;
+          }
+
+          const borderHover = cancelled ? '' : 'hover:border-primary/20';
+          const badgeClass = cancelled ? 'border-red-900/40 bg-red-900/20 text-red-400' : 'border-primary/20 bg-primary/5 text-primary';
+          const dotHTML = !cancelled ? `<span class="w-2 h-2 rounded-full bg-primary animate-pulse"></span>` : `<span class="w-2 h-2 rounded-full bg-red-500"></span>`;
+
+          const card = document.createElement('div');
+          card.className = `bg-surface-container-low/30 border border-white/5 p-8 flex flex-col relative group overflow-hidden transition-all ${borderHover}`;
+          card.innerHTML = `
+            <div class="flex justify-between items-center mb-8 border-b border-white/5 pb-6">
+              <div class="font-headline">
+                <div class="text-[10px] text-outline uppercase tracking-widest font-bold mb-1">ENTRY_ID</div>
+                <div class="text-lg font-bold text-on-surface">#${doc.id.slice(-6).toUpperCase()}</div>
+                <div class="text-[11px] font-label text-outline uppercase mt-1">TS // ${new Date(order.timeISO).toLocaleDateString('en-GB')}</div>
+              </div>
+              <div class="text-right">
+                <div class="inline-flex items-center gap-2 px-4 py-2 border ${badgeClass} text-[10px] font-bold uppercase tracking-widest">
+                  ${dotHTML} ${curStat}
+                </div>
+              </div>
+            </div>
+            
+            <div class="flex-grow flex flex-col mb-4">
+              ${productHTML}
+            </div>
+
+            ${progressHTML}
+
+            <div class="bg-surface-container-lowest border border-white/5 p-5 flex justify-between items-center">
+              <div class="flex gap-10">
+                <div>
+                  <div class="text-[9px] font-label text-outline uppercase tracking-widest mb-1">LEDGER_PAID</div>
+                  <div class="text-lg font-headline font-bold text-on-surface">৳${order.paid || 0}</div>
+                </div>
+                <div>
+                  <div class="text-[9px] font-label text-outline uppercase tracking-widest mb-1">LEDGER_DUE</div>
+                  <div class="text-lg font-headline font-bold ${order.due > 0 ? 'text-red-400' : 'text-on-surface'}">৳${order.due || 0}</div>
+                </div>
+              </div>
+              <div class="text-right">
+                <div class="text-[9px] font-label text-primary uppercase tracking-[0.2em] mb-1">TOTAL_SETTLEMENT</div>
+                <div class="text-xl md:text-2xl font-headline font-bold text-primary tracking-tighter">৳${(order.paid || 0) + (order.due || 0)}</div>
+              </div>
+            </div>
+          `;
+          grid.appendChild(card);
+        });
+
+        result.appendChild(grid);
+      } catch (err) {
+        console.error(err);
+        result.innerHTML = `
+          <div class="text-center py-12 border border-red-900/30 bg-red-900/10 rounded-lg">
+             <p class="text-red-400 font-headline uppercase tracking-widest text-sm">Connection Error: ${err.message}</p>
+          </div>
+        `;
+      }
+    });
+  </script>
 </body>
 </html>
