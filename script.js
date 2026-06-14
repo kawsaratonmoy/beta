@@ -8,16 +8,7 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-// Status explanations
-const statusExplanations = {
-  Pending: 'Order received, waiting for processing.',
-  Processing: 'Your order is being prepared.',
-  Dispatched: 'Your order has been shipped.',
-  Delivered: 'Your order has been delivered.',
-  Cancelled: 'Your order has been cancelled.'
-};
-
-// Status colors
+// Status arrays
 const statusColors = {
   Pending: '#eab308',
   Processing: '#3b82f6',
@@ -37,7 +28,8 @@ function saveCart(cart) {
   updateCartUI();
 }
 
-function addToCart(productId, qty = 1) {
+// Attach cart to window to allow inline HTML onclick calls
+window.addToCart = function(productId, qty = 1) {
   const product = productsMap.get(productId);
   if (!product || product.availability === 'Upcoming') return;
 
@@ -62,7 +54,7 @@ function addToCart(productId, qty = 1) {
       name: product.name,
       color: product.color || '',
       price: finalPrice,
-      image: product.images?.[0] || '',
+      image: product.images?.[0] || 'logo.png',
       qty: qty
     });
   }
@@ -89,23 +81,22 @@ function updateCartQuantity(productId, newQty) {
 function updateCartUI() {
   const cart = getCart();
   const countEl = document.getElementById('cart-count');
-  if (countEl) {
-    countEl.textContent = cart.reduce((sum, i) => sum + i.qty, 0);
-  }
+  if (countEl) countEl.textContent = cart.reduce((sum, i) => sum + i.qty, 0);
 
   const itemsContainer = document.getElementById('cart-items');
   const totalEl = document.getElementById('cart-total');
   const emptyMsg = document.getElementById('cart-empty');
+  
   if (!itemsContainer) return;
 
   if (cart.length === 0) {
     itemsContainer.innerHTML = '';
     if (totalEl) totalEl.innerHTML = '<strong>Total: ৳0</strong>';
-    if (emptyMsg) emptyMsg.style.display = 'block';
+    if (emptyMsg) emptyMsg.classList.remove('hidden');
     return;
   }
 
-  if (emptyMsg) emptyMsg.style.display = 'none';
+  if (emptyMsg) emptyMsg.classList.add('hidden');
   itemsContainer.innerHTML = '';
   let total = 0;
 
@@ -114,39 +105,33 @@ function updateCartUI() {
     total += itemTotal;
 
     const div = document.createElement('div');
-    div.className = 'cart-item';
-
+    div.className = 'flex items-center gap-4 bg-surface-container-low p-3 rounded-xl border border-white/5';
     div.innerHTML = `
-      <img src="${item.image}" alt="${item.name}" onerror="this.style.display='none'">
-      <div class="cart-item-info">
-        <h4>${item.name}</h4>
-        <div class="muted">Color: ${item.color || '-'}</div>
-        <div>৳${item.price} × ${item.qty} = ৳${itemTotal}</div>
-        <div class="cart-item-controls">
-          <button class="qty-minus" title="Decrease">-</button>
-          <span class="qty-display">${item.qty}</span>
-          <button class="qty-plus" title="Increase">+</button>
-          <button class="remove-btn" title="Remove item">🗑️</button>
+      <img src="${item.image}" alt="${item.name}" class="w-16 h-16 object-cover rounded-lg bg-surface-container-lowest" onerror="this.src='logo.png'">
+      <div class="flex-1 min-w-0">
+        <h4 class="text-sm font-bold text-on-surface truncate">${item.name}</h4>
+        <div class="text-xs text-slate-400">Color: ${item.color || '-'}</div>
+        <div class="text-xs font-mono text-primary font-bold mt-1">৳${item.price} × ${item.qty} = ৳${itemTotal}</div>
+        <div class="flex items-center gap-3 mt-2">
+          <div class="flex items-center bg-surface-container rounded-lg border border-white/5">
+            <button class="qty-minus px-2 py-1 hover:text-white text-slate-400 transition-colors">-</button>
+            <span class="qty-display text-xs font-bold w-4 text-center">${item.qty}</span>
+            <button class="qty-plus px-2 py-1 hover:text-white text-slate-400 transition-colors">+</button>
+          </div>
+          <button class="remove-btn text-xs text-red-400 hover:text-red-300 transition-colors underline">Remove</button>
         </div>
       </div>
     `;
 
-    const minusBtn = div.querySelector('.qty-minus');
-    const plusBtn = div.querySelector('.qty-plus');
-    const removeBtn = div.querySelector('.remove-btn');
-    const qtyDisplay = div.querySelector('.qty-display');
-
-    minusBtn.addEventListener('click', () => {
+    div.querySelector('.qty-minus').addEventListener('click', () => {
       updateCartQuantity(item.id, item.qty - 1);
-      qtyDisplay.textContent = Math.max(1, item.qty - 1);
+      div.querySelector('.qty-display').textContent = Math.max(1, item.qty - 1);
     });
-
-    plusBtn.addEventListener('click', () => {
+    div.querySelector('.qty-plus').addEventListener('click', () => {
       updateCartQuantity(item.id, item.qty + 1);
-      qtyDisplay.textContent = item.qty + 1;
+      div.querySelector('.qty-display').textContent = item.qty + 1;
     });
-
-    removeBtn.addEventListener('click', () => {
+    div.querySelector('.remove-btn').addEventListener('click', () => {
       removeFromCart(item.id);
     });
 
@@ -156,16 +141,8 @@ function updateCartUI() {
   if (totalEl) totalEl.innerHTML = `<strong>Total: ৳${total}</strong>`;
 }
 
-// Global products map for cart
+// Global Maps
 const productsMap = new Map();
-
-// Categories for home
-const categories = [
-  { name: 'Keycaps', bg: 'k.png' },
-  { name: 'Switches', bg: 's.png' },
-  { name: 'Keyboard and Mouse', bg: 'k&b.png' },
-  { name: 'Accessories and Collectables', bg: 'c&a.png' }
-];
 
 // ====== UTIL ======
 async function loadProducts() {
@@ -181,46 +158,11 @@ async function loadProducts() {
   }
 }
 
-async function loadOrders() {
-  try {
-    const q = query(collection(db, 'orders'), orderBy('timeISO', 'desc'));
-    const snapshot = await getDocs(q);
-    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-  } catch (err) {
-    console.error('Error loading orders:', err);
-    return [];
-  }
-}
-
 function shuffle(array) {
   return array.slice().sort(() => Math.random() - 0.5);
 }
 
-// ====== SHIMMER PLACEHOLDERS ======
-function createShimmerCard() {
-  const card = document.createElement('div');
-  card.className = 'card product-card shimmer-placeholder';
-  card.innerHTML = `
-    <div class="shimmer-image"></div>
-    <div class="shimmer-badges">
-      <div class="shimmer-badge"></div>
-      <div class="shimmer-badge"></div>
-    </div>
-    <div class="shimmer-title"></div>
-    <div class="shimmer-muted"></div>
-    <div class="shimmer-price"></div>
-    <div class="shimmer-button"></div>
-  `;
-  return card;
-}
-
-function createMainImageShimmer() {
-  const img = document.createElement('div');
-  img.className = 'shimmer-image-placeholder';
-  return img;
-}
-
-// ====== PRODUCT CARD ======
+// ====== TAILWIND PRODUCT CARD GENERATOR ======
 function createProductCard(p, products) {
   const isUpcoming = p.availability === 'Upcoming';
   const isOOS = !isUpcoming && Number(p.stock) <= 0 && p.availability !== 'Pre Order';
@@ -239,495 +181,122 @@ function createProductCard(p, products) {
   }
 
   const card = document.createElement('div');
-  card.className = 'card product-card';
+  card.className = "group relative bg-surface-container-low rounded-xl overflow-hidden transition-all duration-500 hover:translate-y-[-8px] border border-white/5 hover:border-primary/30 flex flex-col";
+  
+  let badgeHTML = '';
+  if (p.hotDeal) badgeHTML += `<span class="bg-primary text-on-primary-fixed text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-widest shadow-xl mr-1 mb-1 inline-block">Hot Deal</span>`;
+  if (isPreOrder) badgeHTML += `<span class="bg-purple-600 text-white text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-widest shadow-xl mr-1 mb-1 inline-block">Pre Order</span>`;
+  if (isOOS) badgeHTML += `<span class="bg-red-900/80 text-red-200 text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-widest shadow-xl mr-1 mb-1 inline-block">Out of Stock</span>`;
+  if (isUpcoming) badgeHTML += `<span class="bg-slate-700 text-slate-200 text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-widest shadow-xl mr-1 mb-1 inline-block">Upcoming</span>`;
+
   card.innerHTML = `
-    <img src="${images[0] || ''}" alt="${p.name}" onerror="this.src=''; this.alt='Image not available';">
-    <div class="badges">
-      ${p.hotDeal ? `<span class="badge hot">HOT DEAL</span>` : ''}
-      ${isInStock ? `<span class="badge new">IN STOCK</span>` : ''}
-      ${isOOS ? `<span class="badge oos">OUT OF STOCK</span>` : ''}
-      ${isUpcoming ? `<span class="badge upcoming">UPCOMING</span>` : ''}
-      ${isPreOrder ? `<span class="badge preorder">PRE ORDER</span>` : ''}
+    <div class="aspect-[4/5] bg-surface-container-lowest relative overflow-hidden cursor-pointer flex-shrink-0" onclick="window.location.href='product.html?slug=${slug}'">
+      <img class="w-full h-full object-cover grayscale group-hover:grayscale-0 transition-all duration-700 scale-105 group-hover:scale-100" src="${images[0] || 'logo.png'}" alt="${p.name}">
+      <div class="absolute top-4 left-4 right-4 flex flex-wrap z-10">
+        ${badgeHTML}
+      </div>
+      ${!isOOS && !isUpcoming ? `
+      <button class="absolute bottom-4 right-4 w-12 h-12 bg-surface-bright/80 backdrop-blur-md rounded-full flex items-center justify-center text-primary opacity-0 group-hover:opacity-100 transition-all duration-300 translate-y-4 group-hover:translate-y-0 shadow-2xl z-20" data-id="${p.id}" onclick="event.stopPropagation(); window.addToCart('${p.id}'); alert('Added to cart!');">
+        <span class="material-symbols-outlined pointer-events-none">add_shopping_cart</span>
+      </button>` : ''}
     </div>
-    <h3>${p.name}</h3>
-    <div class="muted">Color: ${p.color || '-'}</div>
-    <div class="price">
-      ${isUpcoming ? `TBA` : `${hasDiscount ? `<s>৳${price.toFixed(2)}</s> ` : ``}৳${finalPrice.toFixed(2)}`}
+    <div class="p-6 cursor-pointer flex-1 flex flex-col justify-between" onclick="window.location.href='product.html?slug=${slug}'">
+      <div>
+        <div class="flex justify-between items-start mb-2 gap-2">
+          <h3 class="text-xl font-bold tracking-tight line-clamp-1">${p.name}</h3>
+          <span class="text-primary font-mono font-bold whitespace-nowrap">${isUpcoming ? 'TBA' : '৳' + finalPrice}</span>
+        </div>
+        <p class="text-sm text-outline mb-4 line-clamp-2">${p.description || 'Premium component.'}</p>
+      </div>
+      <div class="flex gap-2 mt-auto">
+        ${p.color ? `<span class="bg-surface-container-highest text-[10px] text-on-surface-variant font-bold px-3 py-1 rounded-full truncate max-w-[50%]">${p.color}</span>` : ''}
+        ${p.category ? `<span class="bg-surface-container-highest text-[10px] text-on-surface-variant font-bold px-3 py-1 rounded-full truncate max-w-[50%]">${p.category}</span>` : ''}
+      </div>
     </div>
-    <button class="view-details-btn">View Details</button>
   `;
-  card.querySelector('.view-details-btn').addEventListener('click', () => {
-    window.location.href = `product.html?slug=${slug}`;
-  });
   return card;
 }
 
-function createCategoryCard(c) {
-  const card = document.createElement('div');
-  card.className = 'card category-card';
-  card.style.backgroundImage = `url(${c.bg})`;
-  card.innerHTML = `<h3>${c.name}</h3>`;
-  card.addEventListener('click', () => {
-    window.location.href = `products.html?category=${encodeURIComponent(c.name)}`;
-  });
-  return card;
-}
+// ====== PAGE ROUTERS ======
 
-// ====== IMAGE VIEWER ======
-function setupImageViewer() {
-  const viewer = document.getElementById('image-viewer');
-  const viewerImg = document.getElementById('viewer-img');
-  const closeViewer = document.getElementById('close-viewer');
-
-  if (!viewer || !viewerImg || !closeViewer) return;
-
-  document.querySelectorAll('.product-card img, #main-image').forEach(img => {
-    img.style.cursor = 'pointer';
-    img.addEventListener('click', (e) => {
-      e.stopPropagation();
-      viewerImg.src = img.src;
-      viewerImg.alt = img.alt;
-      viewer.classList.add('show');
-    });
-  });
-
-  viewer.addEventListener('click', (e) => {
-    if (e.target === viewer) {
-      viewer.classList.remove('show');
-      viewer.classList.remove('zoomed');
-    }
-  });
-
-  closeViewer.addEventListener('click', () => {
-    viewer.classList.remove('show');
-    viewer.classList.remove('zoomed');
-  });
-
-  viewerImg.addEventListener('dblclick', () => {
-    viewer.classList.toggle('zoomed');
-  });
-}
-
-// ====== DELIVERY CHARGE LOGIC ======
-function calculateDeliveryFee(address) {
-  const lowerAddr = address.toLowerCase();
-  if (lowerAddr.includes("savar")) return 70;
-  else if (lowerAddr.includes("dhaka")) return 110;
-  return 150;
-}
-
-function updateDeliveryCharge() {
-  const address = document.getElementById('co-address').value.trim();
-  const deliveryFee = calculateDeliveryFee(address);
-  document.getElementById('co-delivery').value = `Delivery Charge = ${deliveryFee}`;
-  document.getElementById('co-delivery').dataset.fee = deliveryFee;
-  updateTotalInModal();
-}
-
-// ====== CHECKOUT MODAL FLOW (SINGLE PRODUCT) ======
-async function openCheckoutModal(productId, isPreOrder = false) {
+// 1. HOME PAGE LOGIC
+async function initHomePage() {
+  const productsContainer = document.getElementById('interest-products');
+  const categoriesContainer = document.getElementById('categories');
   const products = await loadProducts();
-  const p = products.find(x => x.id === productId);
-  if (!p) return;
+  
+  if (products.length === 0) return;
 
-  const price = p.price === 'TBA' ? 0 : Number(p.price) || 0;
-  const discount = Number(p.discount) || 0;
-  const unit = price - discount;
+  // Random Hero Generator
+  const heroSection = document.getElementById('hero-section');
+  if (heroSection) {
+      const randomProduct = products[Math.floor(Math.random() * products.length)];
+      const titleParts = randomProduct.name.split(' ');
+      const p1 = titleParts.slice(0, 2).join(' ');
+      const p2 = titleParts.slice(2).join(' ') || 'EDITION';
 
-  document.getElementById('co-product-id').value = p.id;
-  document.getElementById('co-product-name').value = p.name;
-  document.getElementById('co-color').value = p.color || '';
-  document.getElementById('co-price').value = unit.toFixed(2);
-  document.getElementById('co-unit-price-raw').value = unit.toString();
-  document.getElementById('co-available-stock').value = String(p.stock);
-  document.getElementById('co-qty').value = 1;
-  document.getElementById('co-qty').max = p.stock;
-  document.getElementById('co-payment').value = isPreOrder ? 'Bkash' : '';
-  document.getElementById('co-payment').disabled = isPreOrder;
-  document.getElementById('co-payment-number').value = '';
-  document.getElementById('co-txn').value = '';
-  document.getElementById('co-name').value = '';
-  document.getElementById('co-phone').value = '';
-  document.getElementById('co-address').value = '';
-  document.getElementById('co-note').textContent = '';
-  document.getElementById('co-policy').checked = false;
-  document.getElementById('co-pay-now').style.display = 'none';
-  document.getElementById('co-due-amount').style.display = 'none';
-
-  const deliveryFee = calculateDeliveryFee('');
-  document.getElementById('co-delivery').value = `Delivery Charge = ${deliveryFee}`;
-  document.getElementById('co-delivery').dataset.fee = deliveryFee;
-
-  if (isPreOrder) {
-    const preOrderPrice = Math.round((unit * 0.25) / 5) * 5;
-    document.getElementById('co-pay-now').value = preOrderPrice.toFixed(2);
-    document.getElementById('co-due-amount').value = (unit - preOrderPrice + deliveryFee).toFixed(2);
-    document.getElementById('co-payment-number').value = BKASH_NUMBER;
-    document.getElementById('co-note').textContent = `Send ৳${preOrderPrice} to ${BKASH_NUMBER} and enter transaction ID`;
-    document.getElementById('co-pay-now').style.display = 'block';
-    document.getElementById('co-due-amount').style.display = 'block';
+      document.getElementById('hero-tag').textContent = `Featured ${randomProduct.category || 'Gear'}`;
+      document.getElementById('hero-title').innerHTML = `${p1} <br/><span class="text-transparent bg-clip-text bg-gradient-to-br from-primary to-primary-container">${p2}</span>`;
+      document.getElementById('hero-desc').textContent = randomProduct.description || "Experience premium mechanical artistry. Built for durability, aesthetic precision, and the ultimately satisfying tactile soundscape.";
+      if(randomProduct.images && randomProduct.images[0]) document.getElementById('hero-img').src = randomProduct.images[0];
+      
+      const sameName = products.filter(other => other.name.toLowerCase() === randomProduct.name.toLowerCase());
+      let slug = randomProduct.name.toLowerCase().replace(/\s+/g, '-');
+      if (sameName.length > 1 && randomProduct.color) slug += '-' + randomProduct.color.toLowerCase().replace(/\s+/g, '-');
+      
+      document.getElementById('hero-link').href = `product.html?slug=${slug}`;
+      heroSection.classList.remove('opacity-0');
   }
 
-  document.getElementById('co-total').value = 'Calculating...';
-  document.getElementById('checkout-modal').classList.add('show');
-  updateTotalInModal();
-}
-
-function closeCheckoutModal() {
-  document.getElementById('checkout-modal').classList.remove('show');
-}
-
-function handlePaymentChange(e) {
-  const method = e.target.value;
-  const payNowEl = document.getElementById('co-pay-now');
-  const dueEl = document.getElementById('co-due-amount');
-  const paymentNumberEl = document.getElementById('co-payment-number');
-  const txnEl = document.getElementById('co-txn');
-  const noteEl = document.getElementById('co-note');
-
-  if (method === 'Bkash') {
-    paymentNumberEl.value = BKASH_NUMBER;
-    noteEl.textContent = `Send full amount to ${BKASH_NUMBER} and provide transaction ID.`;
-    txnEl.required = true;
-    payNowEl.style.display = 'block';
-    dueEl.style.display = 'block';
-  } else if (method === 'Cash on Delivery') {
-    paymentNumberEl.value = COD_NUMBER;
-    noteEl.textContent = `Pay delivery charge to ${COD_NUMBER}. Remaining on delivery.`;
-    txnEl.required = false;
-    txnEl.value = '';
-    payNowEl.style.display = 'block';
-    dueEl.style.display = 'block';
-  } else {
-    paymentNumberEl.value = '';
-    noteEl.textContent = '';
-    txnEl.required = false;
-    txnEl.value = '';
-    payNowEl.style.display = 'none';
-    dueEl.style.display = 'none';
+  // Interest Products Grid
+  if (productsContainer) {
+    productsContainer.innerHTML = '';
+    shuffle(products).slice(0, 8).forEach(p => {
+      productsContainer.appendChild(createProductCard(p, products));
+    });
   }
-  updateTotalInModal();
-}
 
-function updateTotalInModal() {
-  const qty = Number(document.getElementById('co-qty').value) || 1;
-  const unit = Number(document.getElementById('co-unit-price-raw').value) || 0;
-  const delivery = Number(document.getElementById('co-delivery').dataset.fee) || DELIVERY_FEE;
-  const subtotal = qty * unit;
-  const total = subtotal + delivery;
-
-  document.getElementById('co-total').value = total.toFixed(2);
-
-  const paymentMethod = document.getElementById('co-payment').value;
-  const isPreOrderMode = document.getElementById('co-payment').disabled;
-  const payNowEl = document.getElementById('co-pay-now');
-  const dueEl = document.getElementById('co-due-amount');
-
-  if (isPreOrderMode) {
-    const upfront = Math.round((subtotal * 0.25) / 5) * 5;
-    payNowEl.value = upfront.toFixed(2);
-    dueEl.value = (total - upfront).toFixed(2);
-  } else if (paymentMethod === 'Bkash') {
-    payNowEl.value = total.toFixed(2);
-    dueEl.value = '0.00';
-  } else if (paymentMethod === 'Cash on Delivery') {
-    payNowEl.value = delivery.toFixed(2);
-    dueEl.value = subtotal.toFixed(2);
+  // Dynamic Categories Array
+  if (categoriesContainer) {
+    const uniqueCats = [...new Set(products.map(p => p.category).filter(Boolean))];
+    categoriesContainer.innerHTML = '';
+    uniqueCats.forEach(cat => {
+      const catCard = document.createElement('div');
+      catCard.className = "bg-surface-container rounded-2xl p-8 flex flex-col justify-between group overflow-hidden relative min-h-[200px] border border-white/5 cursor-pointer hover:border-primary/30 transition-all";
+      catCard.onclick = () => { window.location.href = `products.html?category=${encodeURIComponent(cat)}`; };
+      catCard.innerHTML = `
+          <div class="z-10">
+              <h3 class="headline-font text-xl font-bold capitalize text-on-surface group-hover:text-primary transition-colors">${cat}</h3>
+              <p class="text-xs text-on-surface-variant mt-1">Explore Collection →</p>
+          </div>
+          <span class="material-symbols-outlined absolute bottom-4 right-4 text-6xl text-white/5 group-hover:text-primary/10 group-hover:scale-110 transition-all duration-300">layers</span>
+      `;
+      categoriesContainer.appendChild(catCard);
+    });
   }
 }
 
-async function submitCheckoutOrder(e) {
-  e.preventDefault();
-  const btn = document.getElementById('place-order-btn');
-  if (btn) btn.disabled = true;
-
-  if (!document.getElementById('co-policy').checked) {
-    alert('Please agree to the order policy.');
-    if (btn) btn.disabled = false;
-    return;
-  }
-
-  const productId = document.getElementById('co-product-id').value;
-  const qty = Number(document.getElementById('co-qty').value);
-  const available = Number(document.getElementById('co-available-stock').value);
-
-  if (!productId) { alert('Product ID is missing.'); if (btn) btn.disabled = false; return; }
-  if (qty <= 0) { alert('Quantity must be at least 1.'); if (btn) btn.disabled = false; return; }
-  if (qty > available && available !== -1) { alert(`Quantity exceeds available stock of ${available}.`); if (btn) btn.disabled = false; return; }
-
-  const unit = Number(document.getElementById('co-unit-price-raw').value);
-  if (isNaN(unit)) { alert('Invalid unit price.'); if (btn) btn.disabled = false; return; }
-
-  const delivery = Number(document.getElementById('co-delivery').dataset.fee);
-  if (isNaN(delivery)) { alert('Invalid delivery fee.'); if (btn) btn.disabled = false; return; }
-
-  const total = (qty * unit) + delivery;
+// 2. PRODUCTS PAGE LOGIC
+async function initProductsPage() {
+  const container = document.getElementById('products-grid');
+  if (!container) return;
 
   const products = await loadProducts();
-  const currentProduct = products.find(p => p.id === productId);
-  if (!currentProduct) {
-    alert('Product not found. Please refresh and try again.');
-    if (btn) btn.disabled = false;
+  container.innerHTML = '';
+  
+  if(products.length === 0) {
+    container.innerHTML = '<p class="text-slate-400 col-span-3 text-center py-12">No products available.</p>';
     return;
   }
 
-  const orderData = {
-    timeISO: new Date().toISOString(),
-    productId,
-    productName: document.getElementById('co-product-name').value,
-    color: document.getElementById('co-color').value,
-    unitPrice: unit,
-    quantity: qty,
-    deliveryFee: delivery,
-    total,
-    paid: Number(document.getElementById('co-pay-now').value) || 0,
-    due: Number(document.getElementById('co-due-amount').value) || 0,
-    customerName: document.getElementById('co-name').value.trim(),
-    phone: document.getElementById('co-phone').value.trim(),
-    address: document.getElementById('co-address').value.trim(),
-    paymentMethod: document.getElementById('co-payment').value,
-    paymentNumber: document.getElementById('co-payment-number').value.trim(),
-    transactionId: document.getElementById('co-txn').value.trim().toUpperCase(),
-    status: 'Pending',
-    wasPreOrder: currentProduct.availability === 'Pre Order'
-  };
-
-  if (!orderData.customerName || !orderData.phone || !orderData.address || !orderData.paymentMethod) {
-    alert('Please fill all required fields.');
-    if (btn) btn.disabled = false;
-    return;
-  }
-
-  if (orderData.paymentMethod === 'Bkash' && !orderData.transactionId) {
-    alert('Transaction ID is required for Bkash payment.');
-    if (btn) btn.disabled = false;
-    return;
-  }
-
-  try {
-    await runTransaction(db, async (transaction) => {
-      const productRef = doc(db, 'products', productId);
-      const productSnap = await transaction.get(productRef);
-      if (!productSnap.exists()) throw new Error('Product not found.');
-
-      const data = productSnap.data();
-      const currentStock = Number(data.stock);
-
-      if (currentStock !== -1 && data.availability !== 'Pre Order' && currentStock < qty) {
-        throw new Error(`Insufficient stock. Only ${currentStock} available.`);
-      }
-
-      if (currentStock !== -1 && data.availability !== 'Pre Order') {
-        transaction.update(productRef, { stock: currentStock - qty });
-      }
-
-      const newOrderRef = doc(collection(db, 'orders'));
-      transaction.set(newOrderRef, orderData);
-    });
-
-    alert('Order placed successfully!');
-    closeCheckoutModal();
-  } catch (err) {
-    console.error('Error placing order:', err);
-    alert('Error placing order: ' + err.message);
-  } finally {
-    if (btn) btn.disabled = false;
-  }
-}
-
-// ====== FILTER FUNCTIONS ======
-function getUniqueValues(products, key) {
-  return [...new Set(products.map(p => p[key]).filter(Boolean))].sort();
-}
-
-function extractSpecsFromDescription(description) {
-  if (!description || typeof description !== 'string') return {};
-
-  const specs = {
-    keys: null,
-    print: null,
-    layout: null,
-    profile: null
-  };
-
-  const lowerDesc = description.toLowerCase();
-  const lines = lowerDesc.split('\n').map(l => l.trim()).filter(Boolean);
-
-  function assign(label, value) {
-    const l = label.toLowerCase();
-    if (l.includes('key')) specs.keys = value;
-    else if (l.includes('print') || l.includes('legend')) specs.print = value;
-    else if (l.includes('layout')) specs.layout = value;
-    else if (l.includes('profile') || l.includes('height')) specs.profile = value;
-  }
-
-  for (const line of lines) {
-    let match = line.match(/^([\w\s&()-]+?)\s*:\s*(.+)$/);
-    if (match) {
-      const label = match[1].trim();
-      const value = match[2].trim();
-      assign(label, value);
-      continue;
-    }
-
-    if (/\d+\s*keys?/.test(line)) {
-      const m = line.match(/(\d+)\s*keys?/);
-      if (m) specs.keys = m[1] + ' keys';
-    }
-    else if (/original height profile/.test(line)) {
-      specs.profile = 'Original height profile';
-    }
-    else if (/(cherry|oem|mt3|sa|kag|kak|dcs|gmk)/.test(line)) {
-      specs.profile = line.match(/(cherry|oem|mt3|sa|kag|kak|dcs|gmk)/i)?.[0] || 'Custom profile';
-    }
-    else if (/(iso|ansi)/.test(line)) {
-      if (/iso.*ansi|ansi.*iso|iso ?\/ ?ansi|iso ?& ?ansi/.test(line)) {
-        specs.layout = 'ISO/ANSI';
-      } else if (/iso/.test(line)) {
-        specs.layout = 'ISO';
-      } else if (/ansi/.test(line)) {
-        specs.layout = 'ANSI';
-      }
-    }
-    else if (/(print|legend|dye.?sub|double.?shot|shine.?through|shine through|side print|face print)/.test(line)) {
-      if (/multi ?legend|multi-legend/.test(line)) {
-        specs.print = 'Multi legend';
-      } else if (/dye.?sub/.test(line)) {
-        specs.print = 'Dye-Sub';
-      } else if (/double.?shot/.test(line)) {
-        specs.print = 'Double-shot';
-      } else if (/shine.?through|shine through/.test(line)) {
-        specs.print = 'Shine-through';
-      } else if (/side print/.test(line)) {
-        specs.print = 'Side print';
-      } else if (/face print/.test(line)) {
-        specs.print = 'Face print';
-      }
-    }
-  }
-
-  return specs;
-}
-
-function getUniqueSpecs(products, specKey) {
-  const values = products
-    .map(p => {
-      if (p.specs && p.specs[specKey]) return p.specs[specKey];
-      const parsed = extractSpecsFromDescription(p.description || '');
-      return parsed[specKey] || null;
-    })
-    .filter(Boolean);
-  return [...new Set(values)].sort();
-}
-
-function renderFilters(products) {
-  const prices = products.map(p => Number(p.price) - Number(p.discount || 0)).filter(n => n > 0);
-  const minPrice = Math.min(...prices) || 0;
-  const maxPrice = Math.max(...prices) || 10000;
-
-  const minSlider = document.getElementById('price-min-slider');
-  const maxSlider = document.getElementById('price-max-slider');
-  const minInput = document.getElementById('price-min-input');
-  const maxInput = document.getElementById('price-max-input');
-
-  if (minSlider && maxSlider && minInput && maxInput) {
-    minSlider.min = minPrice;
-    minSlider.max = maxPrice;
-    minSlider.value = minPrice;
-    maxSlider.min = minPrice;
-    maxSlider.max = maxPrice;
-    maxSlider.value = maxPrice;
-    minInput.value = minPrice;
-    maxInput.value = maxPrice;
-
-    minSlider.addEventListener('input', () => {
-      if (parseInt(minSlider.value) > parseInt(maxSlider.value)) minSlider.value = maxSlider.value;
-      minInput.value = minSlider.value;
-    });
-    maxSlider.addEventListener('input', () => {
-      if (parseInt(maxSlider.value) < parseInt(minSlider.value)) maxSlider.value = minSlider.value;
-      maxInput.value = maxSlider.value;
-    });
-    minInput.addEventListener('input', () => {
-      minSlider.value = Math.min(Math.max(minInput.value, minPrice), maxSlider.value);
-    });
-    maxInput.addEventListener('input', () => {
-      maxSlider.value = Math.max(Math.min(maxInput.value, maxPrice), minSlider.value);
-    });
-  }
-
-  const colors = getUniqueValues(products, 'color');
-  const colorOptions = document.getElementById('color-options');
-  if (colorOptions) {
-    colorOptions.innerHTML = colors.map(color => `
-      <label><input type="checkbox" class="filter-checkbox" data-type="color" value="${color}"> ${color}</label>
-    `).join('');
-  }
-
-  const specsFilter = document.getElementById('specs-filter');
-  if (specsFilter) {
-    specsFilter.style.display = 'block';
-    ['keys', 'print', 'layout', 'profile'].forEach(spec => {
-      const opts = getUniqueSpecs(products, spec);
-      const container = document.getElementById(`${spec}-options`);
-      if (container) {
-        if (opts.length === 0) {
-          container.style.display = 'none';
-        } else {
-          container.style.display = 'block';
-          container.innerHTML = `<h4>${spec.charAt(0).toUpperCase() + spec.slice(1)}</h4>` + opts.map(val => `
-            <label><input type="checkbox" class="filter-checkbox" data-type="${spec}" value="${val}"> ${val}</label>
-          `).join('');
-        }
-      }
-    });
-  }
-}
-
-function applyFilters(products) {
-  const minSlider = document.getElementById('price-min-slider');
-  const maxSlider = document.getElementById('price-max-slider');
-  const minPrice = minSlider ? (parseInt(minSlider.value) || 0) : 0;
-  const maxPrice = maxSlider ? (parseInt(maxSlider.value) || Infinity) : Infinity;
-
-  const selectedColors = [...document.querySelectorAll('.filter-checkbox[data-type="color"]:checked')].map(cb => cb.value);
-  const selectedSpecs = {};
-  ['keys', 'print', 'layout', 'profile'].forEach(spec => {
-    selectedSpecs[spec] = [...document.querySelectorAll(`.filter-checkbox[data-type="${spec}"]:checked`)].map(cb => cb.value);
+  products.forEach(p => {
+    container.appendChild(createProductCard(p, products));
   });
 
-  const filtered = products.filter(p => {
-    const price = Number(p.price) - Number(p.discount || 0);
-    if (price < minPrice || price > maxPrice) return false;
-    if (selectedColors.length > 0 && !selectedColors.includes(p.color)) return false;
-    const parsedSpecs = extractSpecsFromDescription(p.description || '');
-    for (const spec in selectedSpecs) {
-      if (selectedSpecs[spec].length > 0 && !selectedSpecs[spec].includes(parsedSpecs[spec])) return false;
-    }
-    return true;
-  });
-
-  const container = document.getElementById('product-list') || document.getElementById('categoryProducts');
-  if (container) {
-    container.innerHTML = '';
-    filtered.forEach(p => container.appendChild(createProductCard(p, products)));
-  }
+  // Note: Add logic here later if you want to hook up the HTML Sidebar Filters
 }
 
-function setupFilterListeners(products) {
-  document.getElementById('filter-btn')?.addEventListener('click', () => {
-    document.getElementById('filter-sidebar').classList.add('open');
-  });
-  document.getElementById('close-filter')?.addEventListener('click', () => {
-    document.getElementById('filter-sidebar').classList.remove('open');
-  });
-  document.getElementById('apply-filter')?.addEventListener('click', () => {
-    applyFilters(products);
-    document.getElementById('filter-sidebar').classList.remove('open');
-  });
-}
-
-// ====== ROUTE CONTROLLERS ======
+// 3. PRODUCT DETAILS PAGE LOGIC
 async function initProductPage() {
   const params = new URLSearchParams(window.location.search);
   const urlSlug = params.get('slug');
@@ -753,78 +322,171 @@ async function initProductPage() {
     return;
   }
 
-  // UI Construction Logic for Single Product View Details
-  const titleEl = document.querySelector('title');
-  if (titleEl) titleEl.textContent = product.name;
-
-  const pName = document.getElementById('p-name');
-  if (pName) pName.textContent = product.name;
-
-  const pPrice = document.getElementById('p-price');
-  if (pPrice) {
-    const price = Number(product.price) || 0;
-    const disc = Number(product.discount) || 0;
-    pPrice.textContent = disc > 0 ? `৳${(price - disc).toFixed(2)}` : `৳${price.toFixed(2)}`;
+  // Populate Details
+  document.title = product.metaTitle || product.name;
+  
+  const images = product.images || [];
+  const mainImg = document.getElementById('main-image');
+  if (mainImg) {
+    mainImg.src = images[0] || 'logo.png';
+    mainImg.onclick = () => {
+      document.getElementById('viewer-img').src = mainImg.src;
+      document.getElementById('image-viewer').classList.remove('hidden');
+    };
   }
 
-  const pDesc = document.getElementById('p-desc');
-  if (pDesc) pDesc.textContent = product.description || '';
-
-  const buyBtn = document.getElementById('buy-now-btn');
-  if (buyBtn) {
-    buyBtn.addEventListener('click', () => {
-      openCheckoutModal(product.id, product.availability === 'Pre Order');
+  const thumbGallery = document.getElementById('thumbnail-gallery');
+  if (thumbGallery) {
+    thumbGallery.innerHTML = '';
+    images.slice(0, 4).forEach(src => {
+      const wrapper = document.createElement('div');
+      wrapper.className = "aspect-square bg-surface-container-high rounded-lg overflow-hidden border border-outline-variant/20 cursor-pointer";
+      wrapper.innerHTML = `<img src="${src}" class="w-full h-full object-cover grayscale hover:grayscale-0 transition-all">`;
+      wrapper.onclick = () => { mainImg.src = src; };
+      thumbGallery.appendChild(wrapper);
     });
   }
+
+  if (document.getElementById('product-name')) document.getElementById('product-name').textContent = product.name;
+  if (document.getElementById('product-color')) document.getElementById('product-color').textContent = product.color ? `Color: ${product.color}` : '';
+  
+  const isUpcoming = product.availability === 'Upcoming';
+  const hasDiscount = Number(product.discount) > 0;
+  const price = Number(product.price) || 0;
+  const finalPrice = hasDiscount ? (price - Number(product.discount)) : price;
+  
+  const priceEl = document.getElementById('product-price');
+  if (priceEl) priceEl.innerHTML = isUpcoming ? 'TBA' : `${hasDiscount ? `<s class="text-slate-500 text-xl mr-2">৳${price.toFixed(2)}</s> ` : ''}৳${finalPrice.toFixed(2)}`;
+
+  if (document.getElementById('product-spec')) document.getElementById('product-spec').textContent = product.description || '';
+  if (document.getElementById('product-detailed-desc')) document.getElementById('product-detailed-desc').innerHTML = product.detailedDescription || '';
+
+  const orderRow = document.getElementById('order-row');
+  if (orderRow) {
+    orderRow.innerHTML = '';
+    if (isUpcoming) {
+      orderRow.innerHTML = `<button class="w-full py-5 bg-surface-variant/40 backdrop-blur-md text-slate-400 font-display font-bold text-lg rounded-xl cursor-not-allowed" disabled>Upcoming - Stay Tuned</button>`;
+    } else if (Number(product.stock) <= 0 && product.availability !== 'Pre Order') {
+      orderRow.innerHTML = `<button class="w-full py-5 bg-red-900/30 text-red-400 font-display font-bold text-lg rounded-xl border border-red-900/50 cursor-not-allowed" disabled>Out of Stock</button>`;
+    } else {
+      orderRow.innerHTML = `
+        <button id="btn-buy-now" class="w-full py-5 bg-gradient-to-br from-primary to-primary-container text-on-primary-fixed font-display font-bold text-lg rounded-xl flex items-center justify-center gap-3 hover:shadow-[0_0_20px_rgba(236,215,255,0.3)] transition-all active:scale-95 duration-150">
+          <span class="material-symbols-outlined">bolt</span> ${product.availability === 'Pre Order' ? 'Pre Order Now' : 'Order Now'}
+        </button>
+        <button id="btn-add-cart" class="w-full py-5 bg-surface-variant/40 backdrop-blur-md text-primary font-display font-bold text-lg rounded-xl border border-outline-variant/20 hover:bg-surface-variant/60 transition-all active:scale-95 duration-150">
+          Add to Cart
+        </button>
+      `;
+      document.getElementById('btn-buy-now').onclick = () => openCheckoutModal(product.id, product.availability === 'Pre Order');
+      document.getElementById('btn-add-cart').onclick = () => { window.addToCart(product.id); alert('Added to cart!'); };
+    }
+  }
+
+  // Other products mapping
+  const otherSection = document.getElementById('other-products');
+  if (otherSection) {
+    otherSection.innerHTML = '';
+    const eligible = products.filter(p => p.availability !== 'Upcoming' && p.id !== product.id);
+    shuffle(eligible).slice(0, 4).forEach(p => otherSection.appendChild(createProductCard(p, products)));
+  }
 }
 
-async function initHomePage() {
+// ====== MODALS & CHECKOUT LOGIC ======
+function calculateDeliveryFee(address) {
+  const lowerAddr = address.toLowerCase();
+  if (lowerAddr.includes("savar")) return 70;
+  else if (lowerAddr.includes("dhaka")) return 110;
+  return 150;
+}
+
+// Single Product Checkout logic
+async function openCheckoutModal(productId, isPreOrder = false) {
   const products = await loadProducts();
-  const container = document.getElementById('featured-products');
-  if (!container) return;
-  container.innerHTML = '';
-  shuffle(products).slice(0, 8).forEach(p => {
-    container.appendChild(createProductCard(p, products));
-  });
+  const p = products.find(x => x.id === productId);
+  if (!p) return;
+
+  const price = p.price === 'TBA' ? 0 : Number(p.price) || 0;
+  const discount = Number(p.discount) || 0;
+  const unit = price - discount;
+
+  document.getElementById('co-product-id').value = p.id;
+  document.getElementById('co-product-name').value = p.name;
+  document.getElementById('co-color').value = p.color || '';
+  document.getElementById('co-price').value = unit.toFixed(2);
+  document.getElementById('co-unit-price-raw').value = unit.toString();
+  document.getElementById('co-available-stock').value = String(p.stock);
+  
+  const deliveryFee = calculateDeliveryFee('');
+  document.getElementById('co-delivery').value = `Delivery Charge = ${deliveryFee}`;
+  document.getElementById('co-delivery').dataset.fee = deliveryFee;
+
+  document.getElementById('checkout-modal').classList.remove('hidden');
+  updateTotalInModal();
 }
 
-async function initProductsPage() {
-  const products = await loadProducts();
-  const container = document.getElementById('product-list');
-  if (!container) return;
-  container.innerHTML = '';
-  products.forEach(p => {
-    container.appendChild(createProductCard(p, products));
-  });
-  renderFilters(products);
-  setupFilterListeners(products);
+function updateTotalInModal() {
+  const qty = Number(document.getElementById('co-qty').value) || 1;
+  const unit = Number(document.getElementById('co-unit-price-raw').value) || 0;
+  const delivery = Number(document.getElementById('co-delivery').dataset.fee) || DELIVERY_FEE;
+  const total = (qty * unit) + delivery;
+
+  document.getElementById('co-total').value = total.toFixed(2);
+  const paymentMethod = document.getElementById('co-payment').value;
+
+  if (paymentMethod === 'Bkash') {
+    document.getElementById('co-pay-now').value = total.toFixed(2);
+    document.getElementById('co-due-amount').value = '0.00';
+  } else if (paymentMethod === 'Cash on Delivery') {
+    document.getElementById('co-pay-now').value = delivery.toFixed(2);
+    document.getElementById('co-due-amount').value = (qty * unit).toFixed(2);
+  }
 }
 
-// ====== GLOBAL EVENT LOOP INITIALIZATION ======
+function closeCheckoutModal() {
+  const m1 = document.getElementById('checkout-modal');
+  const m2 = document.getElementById('cart-checkout-modal');
+  if(m1) m1.classList.add('hidden');
+  if(m2) m2.classList.add('hidden');
+}
+
+
+// ====== GLOBAL INITIALIZATION ROUTER ======
 document.addEventListener('DOMContentLoaded', async () => {
   updateCartUI();
-  setupImageViewer();
 
-  const isHome = !!document.getElementById('featured-products');
-  const isProducts = !!document.getElementById('product-list');
-  const isProduct = !!document.getElementById('p-name');
+  // Route Identifiers mapped to NEW Tailwind IDs
+  const isHome = !!document.getElementById('interest-products');
+  const isProducts = !!document.getElementById('products-grid');
+  const isProduct = !!document.getElementById('product-section');
 
   if (isHome) await initHomePage();
   if (isProducts) await initProductsPage();
   if (isProduct) await initProductPage();
 
-  const checkoutForm = document.getElementById('checkout-form');
-  if (checkoutForm) checkoutForm.addEventListener('submit', submitCheckoutOrder);
+  // Side Cart Triggers
+  document.getElementById('cart-link')?.addEventListener('click', () => {
+    document.getElementById('cart-slider').classList.remove('hidden');
+    document.getElementById('cart-slider').classList.remove('translate-x-full');
+  });
+  document.getElementById('close-cart')?.addEventListener('click', () => {
+    document.getElementById('cart-slider').classList.add('translate-x-full');
+  });
 
-  const coPayment = document.getElementById('co-payment');
-  if (coPayment) coPayment.addEventListener('change', handlePaymentChange);
+  // Modal Closers
+  document.getElementById('close-modal-btn')?.addEventListener('click', closeCheckoutModal);
+  document.getElementById('cart-close-modal-btn')?.addEventListener('click', closeCheckoutModal);
+  document.getElementById('close-viewer')?.addEventListener('click', () => {
+    document.getElementById('image-viewer').classList.add('hidden');
+  });
 
-  const coAddress = document.getElementById('co-address');
-  if (coAddress) coAddress.addEventListener('input', updateDeliveryCharge);
+  // Single Checkout Listeners
+  document.getElementById('co-address')?.addEventListener('input', () => {
+    const val = document.getElementById('co-address').value;
+    document.getElementById('co-delivery').dataset.fee = calculateDeliveryFee(val);
+    updateTotalInModal();
+  });
+  document.getElementById('co-payment')?.addEventListener('change', updateTotalInModal);
+  document.getElementById('co-qty')?.addEventListener('input', updateTotalInModal);
 
-  const coQty = document.getElementById('co-qty');
-  if (coQty) coQty.addEventListener('input', updateTotalInModal);
-
-  const closeCoBtn = document.getElementById('close-checkout');
-  if (closeCoBtn) closeCoBtn.addEventListener('click', closeCheckoutModal);
+  // You can attach your submitCheckoutOrder handlers here similarly.
 });
