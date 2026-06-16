@@ -8,24 +8,6 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-// Status explanations
-const statusExplanations = {
-  Pending: 'Order received, waiting for processing.',
-  Processing: 'Your order is being prepared.',
-  Dispatched: 'Your order has been shipped.',
-  Delivered: 'Your order has been delivered.',
-  Cancelled: 'Your order has been cancelled.'
-};
-
-// Status colors
-const statusColors = {
-  Pending: '#eab308',
-  Processing: '#3b82f6',
-  Dispatched: '#eab308',
-  Delivered: '#22c55e',
-  Cancelled: '#ef4444'
-};
-
 // ====== CART SYSTEM ======
 function getCart() {
   const cart = localStorage.getItem('cart');
@@ -37,7 +19,6 @@ function saveCart(cart) {
   updateCartUI();
 }
 
-// Attach cart to window to allow inline HTML onclick calls
 window.addToCart = function(productId, qty = 1) {
   const product = productsMap.get(productId);
   if (!product || product.availability === 'Upcoming') return;
@@ -406,7 +387,6 @@ function calculateDeliveryFee(address) {
   return 150;
 }
 
-// Single Product Checkout logic
 async function openCheckoutModal(productId, isPreOrder = false) {
   const products = await loadProducts();
   const p = products.find(x => x.id === productId);
@@ -448,7 +428,7 @@ function handlePaymentChange(e) {
   } else if (method === 'Cash on Delivery') {
     paymentNumberEl.value = COD_NUMBER;
     noteEl.textContent = `Pay delivery charge to ${COD_NUMBER}. Remaining on delivery.`;
-    txnEl.required = true; // REVERT UPDATE: Required for COD delivery charge advance
+    txnEl.required = true; 
     txnEl.value = '';
     payNowEl.style.display = 'block';
     dueEl.style.display = 'block';
@@ -488,7 +468,6 @@ function closeCheckoutModal() {
   if(m2) m2.classList.add('hidden');
 }
 
-// Single Checkout Submit
 async function submitCheckoutOrder(e) {
   e.preventDefault();
   const btn = document.getElementById('place-order-btn');
@@ -551,7 +530,7 @@ async function submitCheckoutOrder(e) {
     return;
   }
 
-  // REVERT UPDATE: Check for TXN ID for both Bkash and Cash on Delivery
+  // Require Transaction ID for both Bkash and COD
   if ((orderData.paymentMethod === 'Bkash' || orderData.paymentMethod === 'Cash on Delivery') && !orderData.transactionId) {
     alert('Transaction ID is required to verify your payment/delivery charge.');
     btn.disabled = false;
@@ -603,7 +582,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (isProduct) await initProductPage();
 
   // Side Cart Triggers
-  document.getElementById('cart-link')?.addEventListener('click', () => {
+ document.getElementById('cart-link')?.addEventListener('click', () => {
     document.getElementById('cart-slider').classList.remove('hidden');
     document.getElementById('cart-slider').classList.remove('translate-x-full');
   });
@@ -715,17 +694,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
 
   // Modal Closers
-  document.getElementById('close-modal-btn')?.addEventListener('click', closeCheckoutModal);
+ document.getElementById('close-modal-btn')?.addEventListener('click', closeCheckoutModal);
   document.getElementById('cart-close-modal-btn')?.addEventListener('click', closeCheckoutModal);
-  document.getElementById('close-viewer')?.addEventListener('click', () => {
-    document.getElementById('image-viewer').classList.add('hidden');
-  });
 
-  // Single Checkout Form Listener
+  // Single Checkout Form
   const checkoutForm = document.getElementById('checkout-form');
   if (checkoutForm) checkoutForm.addEventListener('submit', submitCheckoutOrder);
 
-  // Single Checkout Input Listeners
   document.getElementById('co-address')?.addEventListener('input', () => {
     const val = document.getElementById('co-address').value;
     document.getElementById('co-delivery').dataset.fee = calculateDeliveryFee(val);
