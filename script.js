@@ -273,15 +273,26 @@ async function initProductsPage() {
   const container = document.getElementById('products-grid');
   if (!container) return;
 
+  // FIX: Check for category in URL parameters
+  const params = new URLSearchParams(window.location.search);
+  const categoryFilter = params.get('category');
+
   const products = await loadProducts();
+  
+  // Filter products if category is present
+  let productsToShow = products;
+  if (categoryFilter) {
+    productsToShow = products.filter(p => p.category === categoryFilter);
+  }
+
   container.innerHTML = '';
   
-  if(products.length === 0) {
-    container.innerHTML = '<p class="text-slate-400 col-span-3 text-center py-12">No products available.</p>';
+  if(productsToShow.length === 0) {
+    container.innerHTML = `<p class="text-slate-400 col-span-3 text-center py-12">No products found ${categoryFilter ? 'in category: ' + categoryFilter : ''}.</p>`;
     return;
   }
 
-  products.forEach(p => {
+  productsToShow.forEach(p => {
     container.appendChild(createProductCard(p, products));
   });
 }
