@@ -131,10 +131,9 @@ function updateCartUI() {
   if (totalEl) totalEl.innerHTML = `<strong>Total: ৳${total}</strong>`;
 }
 
-// Global Maps
+// ====== GLOBAL UTILS ======
 const productsMap = new Map();
 
-// ====== UTIL ======
 async function loadProducts() {
   try {
     const snapshot = await getDocs(collection(db, 'products'));
@@ -150,6 +149,13 @@ async function loadProducts() {
 
 function shuffle(array) {
   return array.slice().sort(() => Math.random() - 0.5);
+}
+
+function calculateDeliveryFee(address) {
+  const lowerAddr = address.toLowerCase();
+  if (lowerAddr.includes("savar")) return 70;
+  else if (lowerAddr.includes("dhaka")) return 110;
+  return 150;
 }
 
 // ====== TAILWIND PRODUCT CARD GENERATOR ======
@@ -236,7 +242,6 @@ async function initHomePage() {
       heroSection.classList.remove('opacity-0');
   }
 
-  // Interest Products Grid
   if (productsContainer) {
     productsContainer.innerHTML = '';
     shuffle(products).slice(0, 8).forEach(p => {
@@ -244,7 +249,6 @@ async function initHomePage() {
     });
   }
 
-  // Dynamic Categories Array
   if (categoriesContainer) {
     const uniqueCats = [...new Set(products.map(p => p.category).filter(Boolean))];
     categoriesContainer.innerHTML = '';
@@ -308,7 +312,6 @@ async function initProductPage() {
     return;
   }
 
-  // Populate Details
   document.title = product.metaTitle || product.name;
   
   const images = product.images || [];
@@ -363,12 +366,12 @@ async function initProductPage() {
           Add to Cart
         </button>
       `;
+      // Direct Navigation to the standalone checkout page with the product ID
       document.getElementById('btn-buy-now').onclick = () => { window.location.href = `checkout.html?id=${product.id}`; };
       document.getElementById('btn-add-cart').onclick = () => { window.addToCart(product.id); alert('Added to cart!'); };
     }
   }
 
-  // Other products mapping
   const otherSection = document.getElementById('other-products');
   if (otherSection) {
     otherSection.innerHTML = '';
@@ -377,348 +380,262 @@ async function initProductPage() {
   }
 }
 
-// ====== CHECKOUT DYNAMIC CALCULATION LOGIC ======
-function calculateDeliveryFee(address) {
-  const lowerAddr = address.toLowerCase();
-  if (lowerAddr.includes("savar")) return 70;
-  else if (lowerAddr.includes("dhaka")) return 110;
-  return 150;
-}
-
-// Single Product Total Calculation & Updating Rules
-function updateTotalInModal() {
-  const qtyEl = document.getElementById('co-qty');
-  const unitEl = document.getElementById('co-unit-price-raw');
-  const deliveryEl = document.getElementById('co-delivery');
-  const paymentEl = document.getElementById('co-payment');
-  if (!qtyEl || !unitEl || !deliveryEl || !paymentEl) return;
-
-  const qty = Number(qtyEl.value) || 1;
-  const unit = Number(unitEl.value) || 0;
-  const delivery = Number(deliveryEl.dataset.fee) || DELIVERY_FEE;
-  const total = (qty * unit) + delivery;
-
-  const totalEl = document.getElementById('co-total');
-  if (totalEl) totalEl.value = total.toFixed(2);
-
-  const formEl = document.getElementById('checkout-form');
-  const isPreOrder = formEl?.dataset.isPreOrder === 'true';
-
-  const payNowEl = document.getElementById('co-pay-now');
-  const dueEl = document.getElementById('co-due-amount');
-  const numberEl = document.getElementById('co-payment-number');
-  const txnEl = document.getElementById('co-txn');
-  const noteEl = document.getElementById('co-note');
-
-  if (!payNowEl || !dueEl) return;
-
-  if (isPreOrder) {
-    // Force bKash and 25% upfront downpayment for pre-order products
-    paymentEl.value = 'Bkash';
-    paymentEl.disabled = true;
-    const upfront = Math.round(((qty * unit) * 0.25) / 5) * 5;
-    payNowEl.value = upfront.toFixed(2);
-    dueEl.value = (total - upfront).toFixed(2);
-    if (numberEl) numberEl.value = BKASH_NUMBER;
-    if (noteEl) noteEl.textContent = `Pre-Order Downpayment: Send 25% upfront ৳${upfront} to ${BKASH_NUMBER} and provide Transaction ID.`;
-    if (txnEl) txnEl.required = true;
-  } else {
-    paymentEl.disabled = false;
-    const method = paymentEl.value;
-    if (method === 'Bkash') {
-      payNowEl.value = total.toFixed(2);
-      dueEl.value = '0.00';
-      if (numberEl) numberEl.value = BKASH_NUMBER;
-      if (noteEl) noteEl.textContent = `Send full amount ৳${total.toFixed(2)} to ${BKASH_NUMBER} and provide Transaction ID.`;
-      if (txnEl) txnEl.required = true;
-    } else if (method === 'Cash on Delivery') {
-      payNowEl.value = delivery.toFixed(2);
-      dueEl.value = (qty * unit).toFixed(2);
-      if (numberEl) numberEl.value = COD_NUMBER;
-      if (noteEl) noteEl.textContent = `Pay delivery charge ৳${delivery.toFixed(2)} to ${COD_NUMBER} via bKash. Remaining ৳${(qty * unit).toFixed(2)} on delivery.`;
-      if (txnEl) txnEl.required = true; // REQUIRED
-    } else {
-      payNowEl.value = '';
-      dueEl.value = '';
-      if (numberEl) numberEl.value = '';
-      if (noteEl) noteEl.textContent = '';
-      if (txnEl) txnEl.required = false;
-    }
-  }
-}
-
-// Cart Total Calculation & Updating Rules
-function updateCartCheckoutTotals() {
-  if (!window.cartCheckoutState) return;
-  const { subtotal, hasPreOrder } = window.cartCheckoutState;
-
-  const addressEl = document.getElementById('cart-co-address');
-  const address = addressEl ? addressEl.value.trim() : '';
-  const deliveryFee = calculateDeliveryFee(address);
-  
-  const deliveryEl = document.getElementById('cart-co-delivery');
-  if (deliveryEl) {
-      deliveryEl.value = `Delivery Charge = ${deliveryFee}`;
-      deliveryEl.dataset.fee = deliveryFee;
-  }
-
-  const total = subtotal + deliveryFee;
-  const totalEl = document.getElementById('cart-co-total');
-  if (totalEl) totalEl.value = total.toFixed(2);
-
-  const methodEl = document.getElementById('cart-co-payment');
-  const method = methodEl ? methodEl.value : '';
-  
-  const payNowEl = document.getElementById('cart-co-pay-now');
-  const dueEl = document.getElementById('cart-co-due-amount');
-  const numberEl = document.getElementById('cart-co-payment-number');
-  const txnEl = document.getElementById('cart-co-txn');
-  const noteEl = document.getElementById('cart-co-note');
-
-  if (!payNowEl || !dueEl) return;
-
-  if (hasPreOrder) {
-    if (methodEl) {
-      methodEl.value = 'Bkash';
-      methodEl.disabled = true;
-    }
-    const upfront = Math.round((subtotal * 0.25) / 5) * 5;
-    payNowEl.value = upfront.toFixed(2);
-    dueEl.value = (total - upfront).toFixed(2);
-    if (numberEl) numberEl.value = BKASH_NUMBER;
-    if (noteEl) noteEl.textContent = `Pre-Order contains item(s): Send 25% upfront ৳${upfront} to ${BKASH_NUMBER} and provide Transaction ID.`;
-    if (txnEl) txnEl.required = true;
-  } else {
-    if (methodEl) methodEl.disabled = false;
-    if (method === 'Bkash') {
-      payNowEl.value = total.toFixed(2);
-      dueEl.value = "0.00";
-      if (numberEl) numberEl.value = BKASH_NUMBER;
-      if (noteEl) noteEl.textContent = `Send full amount ৳${total.toFixed(2)} to ${BKASH_NUMBER} and provide Transaction ID.`;
-      if (txnEl) txnEl.required = true;
-    } else if (method === 'Cash on Delivery') {
-      payNowEl.value = deliveryFee.toFixed(2);
-      dueEl.value = subtotal.toFixed(2);
-      if (numberEl) numberEl.value = COD_NUMBER;
-      if (noteEl) noteEl.textContent = `Pay delivery charge ৳${deliveryFee} to ${COD_NUMBER} via bKash. Remaining ৳${subtotal.toFixed(2)} on delivery.`;
-      if (txnEl) txnEl.required = true; // REQUIRED
-    } else {
-      payNowEl.value = '';
-      dueEl.value = '';
-      if (numberEl) numberEl.value = '';
-      if (noteEl) noteEl.textContent = '';
-      if (txnEl) txnEl.required = false;
-    }
-  }
-}
-
-// 4. CHECKOUT PAGE LOGIC (Renders View State)
+// 4. STANDALONE CHECKOUT PAGE LOGIC (Single & Cart)
 async function initCheckoutPage() {
   const urlParams = new URLSearchParams(window.location.search);
-  const productId = urlParams.get('id');
+  const singleProductId = urlParams.get('id');
   const products = await loadProducts();
 
-  if (productId) {
-    // ---- SINGLE PRODUCT VIEW STATE ----
-    const p = products.find(x => x.id === productId);
-    if (!p) { alert('Product not found.'); window.location.href = 'index.html'; return; }
+  let checkoutItems = [];
+  let hasPreOrder = false;
 
-    const price = p.price === 'TBA' ? 0 : Number(p.price) || 0;
-    const discount = Number(p.discount) || 0;
-    const unit = price - discount;
-
-    const singleForm = document.getElementById('checkout-form');
-    const cartForm = document.getElementById('cart-checkout-form');
-    
-    if (cartForm) cartForm.classList.add('hidden');
-    if (singleForm) {
-      singleForm.classList.remove('hidden');
-      singleForm.dataset.isPreOrder = String(p.availability === 'Pre Order');
+  // STEP 1: LOAD DATA
+  if (singleProductId) {
+    // A. Single Product Data
+    const p = products.find(x => x.id === singleProductId);
+    if (!p) {
+      alert('Product not found.');
+      window.location.href = 'index.html';
+      return;
     }
-
-    if(document.getElementById('co-product-id')) document.getElementById('co-product-id').value = p.id;
-    if(document.getElementById('co-product-name')) document.getElementById('co-product-name').value = p.name;
-    if(document.getElementById('co-color')) document.getElementById('co-color').value = p.color || '';
-    if(document.getElementById('co-price')) document.getElementById('co-price').value = unit.toFixed(2);
-    if(document.getElementById('co-unit-price-raw')) document.getElementById('co-unit-price-raw').value = unit.toString();
-    if(document.getElementById('co-available-stock')) document.getElementById('co-available-stock').value = String(p.stock);
-    
-    const deliveryFee = calculateDeliveryFee('');
-    const coDel = document.getElementById('co-delivery');
-    if(coDel) {
-      coDel.value = `Delivery Charge = ${deliveryFee}`;
-      coDel.dataset.fee = deliveryFee;
-    }
-
-    // Fire immediately to ensure fields don't sit static
-    updateTotalInModal();
-
+    const unitPrice = Number(p.price) - Number(p.discount || 0);
+    checkoutItems.push({
+      id: p.id,
+      name: p.name,
+      color: p.color || '',
+      price: unitPrice,
+      image: p.images?.[0] || 'logo.png',
+      qty: 1, 
+      isPreOrder: p.availability === 'Pre Order'
+    });
+    if (p.availability === 'Pre Order') hasPreOrder = true;
   } else {
-    // ---- MULTI-PRODUCT CART VIEW STATE ----
+    // B. Cart Data
     const cart = getCart();
     if (cart.length === 0) {
       alert('Your cart is empty!');
       window.location.href = 'index.html';
       return;
     }
-
-    const singleForm = document.getElementById('checkout-form');
-    const cartForm = document.getElementById('cart-checkout-form');
-
-    if (singleForm) singleForm.classList.add('hidden');
-    if (cartForm) cartForm.classList.remove('hidden');
-
-    let subtotal = 0;
-    let hasPreOrder = false;
-
     cart.forEach(item => {
       const p = products.find(pr => pr.id === item.id);
       if (p) {
-        const unitPrice = Number(p.price) - Number(p.discount || 0);
-        subtotal += unitPrice * item.qty;
-        if (p.availability === 'Pre Order') hasPreOrder = true;
+        item.isPreOrder = p.availability === 'Pre Order';
+        if (item.isPreOrder) hasPreOrder = true;
+        checkoutItems.push(item);
       }
     });
+  }
 
-    const itemsDiv = document.getElementById('cart-co-items');
-    if (itemsDiv) {
-      itemsDiv.innerHTML = '<h3 class="font-bold text-lg mb-2 text-on-surface">Order Summary</h3>';
-      cart.forEach(item => {
-        const p = products.find(pr => pr.id === item.id);
-        if(p) {
-            const unitPrice = Number(p.price) - Number(p.discount || 0);
-            const line = document.createElement('p');
-            line.className = "text-xs mb-1 text-slate-300";
-            line.innerHTML = `<strong>${item.name}</strong> ${item.color ? '(' + item.color + ')' : ''} × ${item.qty}<br>
-                              ৳${unitPrice.toFixed(2)} × ${item.qty} = ৳${(unitPrice * item.qty).toFixed(2)}`;
-            itemsDiv.appendChild(line);
-        }
-      });
-    }
+  // STEP 2: RENDER ITEMS TO DOM
+  const itemsList = document.getElementById('co-items-list');
+  let subtotal = 0;
+  if (itemsList) {
+    itemsList.innerHTML = '';
+    checkoutItems.forEach(item => {
+      const itemTotal = item.price * item.qty;
+      subtotal += itemTotal;
+      itemsList.innerHTML += `
+        <div class="flex gap-4 items-center bg-surface-container-lowest p-3 rounded-xl border border-white/5">
+          <img src="${item.image}" class="w-16 h-16 object-cover rounded-lg bg-surface-variant">
+          <div class="flex-grow">
+            <h4 class="font-headline text-sm font-bold text-on-surface">${item.name}</h4>
+            <p class="text-xs text-outline mb-1">Color: ${item.color || 'Base'} | Qty: ${item.qty}</p>
+            <span class="text-primary font-mono text-sm font-bold">৳${itemTotal.toFixed(2)}</span>
+          </div>
+        </div>
+      `;
+    });
+  }
 
-    const initialDelivery = calculateDeliveryFee('');
-    const cartDel = document.getElementById('cart-co-delivery');
-    if(cartDel) {
-      cartDel.value = `Delivery Charge = ${initialDelivery}`;
-      cartDel.dataset.fee = initialDelivery;
-    }
+  const subtotalDisplay = document.getElementById('co-subtotal-display');
+  if (subtotalDisplay) subtotalDisplay.textContent = `৳${subtotal.toFixed(2)}`;
 
-    window.cartCheckoutState = { subtotal, hasPreOrder };
+  // STEP 3: PRE-ORDER SPECIFIC LOCKS
+  const bkashRadio = document.getElementById('pay-bkash');
+  const codRadio = document.getElementById('pay-cod');
+  if (hasPreOrder && codRadio) {
+    codRadio.disabled = true;
+    codRadio.parentElement.classList.add('opacity-30', 'pointer-events-none');
+    bkashRadio.checked = true;
+  }
+
+  // STEP 4: DYNAMIC CALCULATION FUNCTION
+  function updateCheckoutTotals() {
+    const address = document.getElementById('co-address')?.value || '';
+    const deliveryFee = calculateDeliveryFee(address);
     
-    // Fire immediately to ensure fields don't sit static
-    updateCartCheckoutTotals();
+    const deliveryDisplay = document.getElementById('co-delivery-display');
+    if(deliveryDisplay) deliveryDisplay.textContent = `৳${deliveryFee.toFixed(2)}`;
+
+    const total = subtotal + deliveryFee;
+    const totalDisplay = document.getElementById('co-total-display');
+    if(totalDisplay) totalDisplay.textContent = `৳${total.toFixed(2)}`;
+
+    const selectedMethod = document.querySelector('input[name="payment_method"]:checked')?.value;
+    const payBox = document.getElementById('payment-details-box');
+    const merchantLabel = document.getElementById('co-merchant-number');
+    const txnContainer = document.getElementById('txn-container');
+    const paymentNote = document.getElementById('co-payment-note');
+    const splitDisplay = document.getElementById('preorder-split-display');
+
+    if (selectedMethod && payBox) payBox.classList.remove('hidden');
+
+    if (hasPreOrder) {
+      const advance = Math.round((subtotal * 0.25) / 5) * 5;
+      if(splitDisplay) splitDisplay.classList.remove('hidden');
+      if(document.getElementById('co-advance-display')) document.getElementById('co-advance-display').textContent = `৳${advance.toFixed(2)}`;
+      if(document.getElementById('co-due-display')) document.getElementById('co-due-display').textContent = `৳${(total - advance).toFixed(2)}`;
+      
+      if(merchantLabel) merchantLabel.textContent = BKASH_NUMBER;
+      if(txnContainer) txnContainer.classList.remove('hidden');
+      if(paymentNote) paymentNote.textContent = `Please send 25% advance ৳${advance.toFixed(2)} to ${BKASH_NUMBER} via bKash Send Money to confirm pre-order.`;
+    } 
+    else if (selectedMethod === 'Bkash') {
+      if(splitDisplay) splitDisplay.classList.add('hidden');
+      if(merchantLabel) merchantLabel.textContent = BKASH_NUMBER;
+      if(txnContainer) txnContainer.classList.remove('hidden');
+      if(paymentNote) paymentNote.textContent = `Please send total ৳${total.toFixed(2)} to ${BKASH_NUMBER} via bKash Send Money.`;
+    } 
+    else if (selectedMethod === 'Cash on Delivery') {
+      if(splitDisplay) splitDisplay.classList.add('hidden');
+      if(merchantLabel) merchantLabel.textContent = COD_NUMBER;
+      if(txnContainer) txnContainer.classList.remove('hidden'); // Ensure Txn ID shows for COD Delivery Fee
+      if(paymentNote) paymentNote.textContent = `Please send ONLY the delivery charge ৳${deliveryFee.toFixed(2)} to ${COD_NUMBER} via bKash Send Money to confirm. Subtotal collected on delivery.`;
+    }
+  }
+
+  // Attach dynamic listeners
+  document.getElementById('co-address')?.addEventListener('input', updateCheckoutTotals);
+  document.querySelectorAll('input[name="payment_method"]').forEach(r => r.addEventListener('change', updateCheckoutTotals));
+  
+  // Fire once on load to populate defaults
+  updateCheckoutTotals();
+
+  // STEP 5: FINAL ORDER SUBMISSION
+  const btn = document.getElementById('final-checkout-btn');
+  if(btn) {
+    btn.addEventListener('click', async () => {
+      const name = document.getElementById('co-name').value.trim();
+      const phone = document.getElementById('co-phone').value.trim();
+      const address = document.getElementById('co-address').value.trim();
+      const paymentMethod = document.querySelector('input[name="payment_method"]:checked')?.value;
+      const txnId = document.getElementById('co-txn').value.trim();
+      const policyAccepted = document.getElementById('co-policy')?.checked;
+
+      if (!name || !phone || !address || !paymentMethod) {
+        alert("Please complete all Operative Details and select a Settlement Protocol.");
+        return;
+      }
+      
+      // TRANSACTION ID STRICT REQUIREMENT FOR BOTH BKASH AND COD
+      if ((paymentMethod === 'Bkash' || paymentMethod === 'Cash on Delivery') && !txnId) {
+        alert("Transaction ID is required to verify your payment/delivery charge.");
+        return;
+      }
+      
+      if (!policyAccepted) {
+        alert("You must accept the Shipping & Return policies to deploy.");
+        return;
+      }
+
+      btn.innerHTML = `<span class="material-symbols-outlined animate-spin">sync</span> PROCESSING...`;
+      btn.disabled = true;
+
+      const deliveryFee = calculateDeliveryFee(address);
+      const total = subtotal + deliveryFee;
+      let paid = 0, due = 0;
+
+      if (hasPreOrder) {
+        paid = Math.round((subtotal * 0.25) / 5) * 5;
+        due = total - paid;
+      } else if (paymentMethod === 'Bkash') {
+        paid = total;
+        due = 0;
+      } else if (paymentMethod === 'Cash on Delivery') {
+        paid = deliveryFee;
+        due = subtotal;
+      }
+
+      try {
+        const orderData = {
+          timeISO: new Date().toISOString(),
+          items: checkoutItems.map(i => ({
+              productId: i.id,
+              productName: i.name,
+              color: i.color,
+              quantity: i.qty,
+              unitPrice: i.price,
+              wasPreOrder: i.isPreOrder
+          })),
+          deliveryFee, total, paid, due,
+          customerName: name, phone, address,
+          paymentMethod,
+          paymentNumber: document.getElementById('co-merchant-number').textContent,
+          transactionId: txnId.toUpperCase(),
+          status: 'Pending'
+        };
+
+        const docRef = await addDoc(collection(db, 'orders'), orderData);
+        
+        // If it was a cart checkout, clear the cart
+        if (!singleProductId) {
+          localStorage.removeItem('cart');
+          updateCartUI();
+        }
+        
+        showOrderConfirmation(docRef.id);
+      } catch (err) {
+        console.error(err);
+        alert("Error generating manifest: " + err.message);
+        btn.innerHTML = `<span class="material-symbols-outlined">rocket_launch</span> Authorize Deployment`;
+        btn.disabled = false;
+      }
+    });
   }
 }
 
-// Single Checkout Submit Function
-async function submitCheckoutOrder(e) {
-  e.preventDefault();
-  const btn = document.getElementById('place-order-btn');
-  if(btn) btn.disabled = true;
-
-  if (!document.getElementById('co-policy').checked) {
-    alert('Please agree to the order policy.');
-    if(btn) btn.disabled = false;
-    return;
-  }
-
-  const productId = document.getElementById('co-product-id').value;
-  const qty = Number(document.getElementById('co-qty').value);
-  const available = Number(document.getElementById('co-available-stock').value);
-
-  if (!productId) { alert('Product ID is missing.'); if(btn) btn.disabled = false; return; }
-  if (qty <= 0) { alert('Quantity must be at least 1.'); if(btn) btn.disabled = false; return; }
-  if (qty > available && available !== -1) { alert(`Quantity exceeds available stock of ${available}.`); if(btn) btn.disabled = false; return; }
-
-  const unit = Number(document.getElementById('co-unit-price-raw').value);
-  if (isNaN(unit)) { alert('Invalid unit price.'); if(btn) btn.disabled = false; return; }
-
-  const delivery = Number(document.getElementById('co-delivery').dataset.fee);
-  if (isNaN(delivery)) { alert('Invalid delivery fee.'); if(btn) btn.disabled = false; return; }
-
-  const total = (qty * unit) + delivery;
-  const formEl = document.getElementById('checkout-form');
-
-  const orderData = {
-    timeISO: new Date().toISOString(),
-    productId,
-    productName: document.getElementById('co-product-name').value,
-    color: document.getElementById('co-color').value,
-    unitPrice: unit,
-    quantity: qty,
-    deliveryFee: delivery,
-    total,
-    paid: Number(document.getElementById('co-pay-now').value) || 0,
-    due: Number(document.getElementById('co-due-amount').value) || 0,
-    customerName: document.getElementById('co-name').value.trim(),
-    phone: document.getElementById('co-phone').value.trim(),
-    address: document.getElementById('co-address').value.trim(),
-    paymentMethod: document.getElementById('co-payment').value,
-    paymentNumber: document.getElementById('co-payment-number').value.trim(),
-    transactionId: document.getElementById('co-txn').value.trim().toUpperCase(),
-    status: 'Pending',
-    wasPreOrder: formEl?.dataset.isPreOrder === 'true'
-  };
-
-  if (!orderData.customerName || !orderData.phone || !orderData.address || !orderData.paymentMethod) {
-    alert('Please fill all required fields.');
-    if(btn) btn.disabled = false;
-    return;
-  }
-
-  if ((orderData.paymentMethod === 'Bkash' || orderData.paymentMethod === 'Cash on Delivery') && !orderData.transactionId) {
-    alert('Transaction ID is required to verify your payment/delivery charge.');
-    if(btn) btn.disabled = false;
-    return;
-  }
-
-  try {
-    await runTransaction(db, async (transaction) => {
-      const productRef = doc(db, 'products', productId);
-      const productSnap = await transaction.get(productRef);
-      if (!productSnap.exists()) throw new Error('Product not found.');
-
-      const data = productSnap.data();
-      const currentStock = Number(data.stock);
-
-      if (currentStock !== -1 && data.availability !== 'Pre Order' && currentStock < qty) {
-        throw new Error(`Insufficient stock. Only ${currentStock} available.`);
-      }
-
-      if (currentStock !== -1 && data.availability !== 'Pre Order') {
-        transaction.update(productRef, { stock: currentStock - qty });
-      }
-
-      const newOrderRef = doc(collection(db, 'orders'));
-      transaction.set(newOrderRef, orderData);
-    });
-
-    alert('Order placed successfully!');
-    window.location.href = 'index.html';
-  } catch (err) {
-    console.error('Error placing order:', err);
-    alert('Error placing order: ' + err.message);
-  } finally {
-    if(btn) btn.disabled = false;
-  }
+// Custom Terminal Success Modal
+function showOrderConfirmation(orderId) {
+  const modal = document.createElement('div');
+  modal.className = "fixed inset-0 z-[200] flex items-center justify-center p-6 bg-slate-950/90 backdrop-blur-md opacity-0 transition-opacity duration-500";
+  modal.innerHTML = `
+    <div class="bg-surface-container-high w-full max-w-sm rounded-2xl overflow-hidden border border-primary/20 shadow-2xl transform scale-95 transition-transform duration-500 text-center flex flex-col items-center p-10">
+      <div class="w-20 h-20 bg-primary/10 rounded-full flex items-center justify-center mb-6">
+        <span class="material-symbols-outlined text-5xl text-primary">verified</span>
+      </div>
+      <h2 class="font-headline text-3xl font-bold tracking-tighter text-on-surface mb-2">Transmission<br>Successful</h2>
+      <p class="text-outline text-sm mb-6 leading-relaxed">Dispatch manifest <span class="text-primary font-mono font-bold">#${orderId.slice(-6).toUpperCase()}</span> has been uploaded to the lattice.</p>
+      <button onclick="window.location.href='index.html'" class="w-full signature-gradient text-on-primary-fixed font-headline font-bold py-4 rounded-xl tracking-widest uppercase shadow-lg shadow-purple-500/20 active:scale-[0.98] transition-all">
+        Return to Base
+      </button>
+    </div>
+  `;
+  document.body.appendChild(modal);
+  setTimeout(() => {
+    modal.classList.remove('opacity-0');
+    modal.querySelector('div').classList.remove('scale-95');
+  }, 50);
 }
 
 // ====== GLOBAL INITIALIZATION ROUTER ======
 document.addEventListener('DOMContentLoaded', async () => {
   updateCartUI();
 
-  // Route Target Checks
+  // Strict routing check to prevent loops
   const isHome = !!document.getElementById('interest-products');
   const isProducts = !!document.getElementById('products-grid');
   const isProduct = !!document.getElementById('product-section');
-  const isCheckout = window.location.pathname.includes('checkout') || !!document.getElementById('checkout-form') || !!document.getElementById('cart-checkout-form');
+  const isCheckoutPage = window.location.pathname.includes('checkout.html');
 
   if (isHome) await initHomePage();
   if (isProducts) await initProductsPage();
   if (isProduct) await initProductPage();
-  if (isCheckout) await initCheckoutPage();
+  
+  // Only trigger checkout logic IF user is explicitly on checkout.html
+  if (isCheckoutPage) await initCheckoutPage();
 
-  // Slider controls
+  // Sidebar Cart UI Triggers
   document.getElementById('cart-link')?.addEventListener('click', () => {
     document.getElementById('cart-slider').classList.remove('hidden');
     document.getElementById('cart-slider').classList.remove('translate-x-full');
@@ -727,6 +644,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('cart-slider').classList.add('translate-x-full');
   });
   
+  // Checkout from Sidebar Cart (Redirect to Checkout.html)
   document.getElementById('checkout-cart')?.addEventListener('click', () => {
     const cart = getCart();
     if (cart.length === 0) {
@@ -738,130 +656,5 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   document.getElementById('close-viewer')?.addEventListener('click', () => {
     document.getElementById('image-viewer').classList.add('hidden');
-  });
-
-  // Single Product Checkout Form Event Hooks
-  const checkoutForm = document.getElementById('checkout-form');
-  if (checkoutForm) checkoutForm.addEventListener('submit', submitCheckoutOrder);
-
-  document.getElementById('co-address')?.addEventListener('input', () => {
-    const val = document.getElementById('co-address').value;
-    const coDel = document.getElementById('co-delivery');
-    if (coDel) coDel.dataset.fee = calculateDeliveryFee(val);
-    updateTotalInModal();
-  });
-  document.getElementById('co-payment')?.addEventListener('change', updateTotalInModal);
-  document.getElementById('co-qty')?.addEventListener('input', updateTotalInModal);
-
-  // Cart Checkout Form Event Hooks
-  document.getElementById('cart-co-address')?.addEventListener('input', updateCartCheckoutTotals);
-  document.getElementById('cart-co-payment')?.addEventListener('change', updateCartCheckoutTotals);
-
-  document.getElementById('cart-checkout-form')?.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const btn = document.querySelector('#cart-checkout-form button[type="submit"]');
-    if (!btn) return;
-    btn.disabled = true;
-
-    if (!document.getElementById('cart-co-policy').checked) {
-      alert('Please agree to the order policy.');
-      btn.disabled = false;
-      return;
-    }
-
-    const cart = getCart();
-    if (cart.length === 0) {
-      alert('Cart is empty!');
-      btn.disabled = false;
-      return;
-    }
-
-    const products = await loadProducts();
-    const deliveryFee = Number(document.getElementById('cart-co-delivery').dataset.fee);
-    let subtotal = 0;
-
-    const items = cart.map(item => {
-      const p = products.find(pr => pr.id === item.id);
-      if (!p) throw new Error('Product missing');
-      const unitPrice = Number(p.price) - Number(p.discount || 0);
-      subtotal += unitPrice * item.qty;
-      return {
-        productId: item.id,
-        productName: item.name,
-        color: item.color || '',
-        unitPrice,
-        quantity: item.qty,
-        wasPreOrder: p.availability === 'Pre Order'
-      };
-    });
-
-    const total = subtotal + deliveryFee;
-    const paid = Number(document.getElementById('cart-co-pay-now').value) || 0;
-    const due = Number(document.getElementById('cart-co-due-amount').value) || 0;
-
-    const orderData = {
-      timeISO: new Date().toISOString(),
-      items,
-      deliveryFee,
-      total,
-      paid,
-      due,
-      customerName: document.getElementById('cart-co-name').value.trim(),
-      phone: document.getElementById('cart-co-phone').value.trim(),
-      address: document.getElementById('cart-co-address').value.trim(),
-      paymentMethod: document.getElementById('cart-co-payment').value,
-      paymentNumber: document.getElementById('cart-co-payment-number').value.trim(),
-      transactionId: document.getElementById('cart-co-txn').value.trim().toUpperCase(),
-      status: 'Pending'
-    };
-
-    if (!orderData.customerName || !orderData.phone || !orderData.address || !orderData.paymentMethod) {
-      alert('Please fill all required fields.');
-      btn.disabled = false;
-      return;
-    }
-
-    if ((orderData.paymentMethod === 'Bkash' || orderData.paymentMethod === 'Cash on Delivery') && !orderData.transactionId) {
-      alert('Transaction ID is required to verify your payment/delivery charge.');
-      btn.disabled = false;
-      return;
-    }
-
-    try {
-      await runTransaction(db, async (transaction) => {
-        const productRefs = items.map(item => doc(db, 'products', item.productId));
-        const productSnaps = await Promise.all(productRefs.map(ref => transaction.get(ref)));
-
-        for (let i = 0; i < items.length; i++) {
-          const snap = productSnaps[i];
-          if (!snap.exists()) throw new Error('Product not found');
-
-          const data = snap.data();
-          const currentStock = Number(data.stock);
-          const item = items[i];
-
-          if (currentStock !== -1 && data.availability !== 'Pre Order' && currentStock < item.quantity) {
-            throw new Error(`Not enough stock for ${item.productName}. Only ${currentStock} left.`);
-          }
-
-          if (currentStock !== -1 && data.availability !== 'Pre Order') {
-            transaction.update(productRefs[i], { stock: currentStock - item.quantity });
-          }
-        }
-
-        const newOrderRef = doc(collection(db, 'orders'));
-        transaction.set(newOrderRef, orderData);
-      });
-
-      alert('Order placed successfully!');
-      localStorage.removeItem('cart');
-      updateCartUI();
-      window.location.href = 'index.html';
-    } catch (err) {
-      console.error('Error placing order:', err);
-      alert('Error placing order: ' + err.message);
-    } finally {
-      btn.disabled = false;
-    }
   });
 });
