@@ -216,12 +216,11 @@ function createProductCard(p, products) {
 // 1. HOME PAGE LOGIC
 async function initHomePage() {
   const productsContainer = document.getElementById('interest-products');
-  const categoriesContainer = document.getElementById('categories');
   const products = await loadProducts();
   
   if (products.length === 0) return;
 
-  // Random Hero Generator
+  // Random Hero Generator (Safely updating the DOM and removing shimmer)
   const heroSection = document.getElementById('hero-section');
   if (heroSection) {
       const randomProduct = products[Math.floor(Math.random() * products.length)];
@@ -229,43 +228,44 @@ async function initHomePage() {
       const p1 = titleParts.slice(0, 2).join(' ');
       const p2 = titleParts.slice(2).join(' ') || 'EDITION';
 
-      document.getElementById('hero-tag').textContent = `Featured ${randomProduct.category || 'Gear'}`;
-      document.getElementById('hero-title').innerHTML = `${p1} <br/><span class="text-transparent bg-clip-text bg-gradient-to-br from-primary to-primary-container">${p2}</span>`;
-      document.getElementById('hero-desc').textContent = randomProduct.description || "Experience premium mechanical artistry. Built for durability, aesthetic precision, and the ultimately satisfying tactile soundscape.";
-      if(randomProduct.images && randomProduct.images[0]) document.getElementById('hero-img').src = randomProduct.images[0];
+      const tagEl = document.getElementById('hero-tag');
+      if(tagEl) tagEl.textContent = `Featured ${randomProduct.category || 'Gear'}`;
+      
+      const titleEl = document.getElementById('hero-title');
+      if(titleEl) {
+        titleEl.innerHTML = `${p1} <br/><span class="text-transparent bg-clip-text bg-gradient-to-br from-primary to-primary-container">${p2}</span>`;
+        titleEl.classList.remove('shimmer', 'text-transparent'); // Removes placeholder animation
+      }
+
+      const descEl = document.getElementById('hero-desc');
+      if(descEl) descEl.textContent = randomProduct.description || "Experience premium mechanical artistry. Built for durability, aesthetic precision, and the ultimately satisfying tactile soundscape.";
+      
+      const imgEl = document.getElementById('hero-img');
+      if(imgEl && randomProduct.images && randomProduct.images[0]) {
+        imgEl.src = randomProduct.images[0];
+        imgEl.classList.remove('shimmer'); // Removes placeholder animation
+      }
       
       const sameName = products.filter(other => other.name.toLowerCase() === randomProduct.name.toLowerCase());
       let slug = randomProduct.name.toLowerCase().replace(/\s+/g, '-');
       if (sameName.length > 1 && randomProduct.color) slug += '-' + randomProduct.color.toLowerCase().replace(/\s+/g, '-');
       
-      document.getElementById('hero-link').href = `product.html?slug=${slug}`;
+      const linkEl = document.getElementById('hero-link');
+      if(linkEl) linkEl.href = `product.html?slug=${slug}`;
+      
       heroSection.classList.remove('opacity-0');
   }
 
+  // Interest Products Generation
   if (productsContainer) {
-    productsContainer.innerHTML = '';
+    productsContainer.innerHTML = ''; // This clears out the HTML Shimmer Cards
     shuffle(products).slice(0, 8).forEach(p => {
       productsContainer.appendChild(createProductCard(p, products));
     });
   }
 
-  if (categoriesContainer) {
-    const uniqueCats = [...new Set(products.map(p => p.category).filter(Boolean))];
-    categoriesContainer.innerHTML = '';
-    uniqueCats.forEach(cat => {
-      const catCard = document.createElement('div');
-      catCard.className = "bg-surface-container rounded-2xl p-8 flex flex-col justify-between group overflow-hidden relative min-h-[200px] border border-white/5 cursor-pointer hover:border-primary/30 transition-all";
-      catCard.onclick = () => { window.location.href = `products.html?category=${encodeURIComponent(cat)}`; };
-      catCard.innerHTML = `
-          <div class="z-10">
-              <h3 class="headline-font text-xl font-bold capitalize text-on-surface group-hover:text-primary transition-colors">${cat}</h3>
-              <p class="text-xs text-on-surface-variant mt-1">Explore Collection →</p>
-          </div>
-          <span class="material-symbols-outlined absolute bottom-4 right-4 text-6xl text-white/5 group-hover:text-primary/10 group-hover:scale-110 transition-all duration-300">layers</span>
-      `;
-      categoriesContainer.appendChild(catCard);
-    });
-  }
+  // NOTE: The dynamic Categories generation block was safely removed here 
+  // to preserve your new static HTML layout!
 }
 
 // 2. PRODUCTS PAGE LOGIC
