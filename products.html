@@ -41,6 +41,15 @@
     .modal.active {
       display: flex;
     }
+    
+    /* Hide scrollbar for the sticky sidebar but allow scrolling */
+    .no-scrollbar::-webkit-scrollbar {
+      display: none;
+    }
+    .no-scrollbar {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
   </style>
 
   <script id="tailwind-config">
@@ -49,71 +58,31 @@
       theme: {
         extend: {
           "colors": {
-            "surface-bright": "#323949",
             "surface-container": "#191f2f",
-            "on-error-container": "#ffdad6",
-            "on-tertiary-fixed-variant": "#404758",
             "surface-variant": "#2e3545",
-            "tertiary": "#d8def3",
             "surface-container-low": "#141b2b",
-            "inverse-on-surface": "#293040",
             "on-primary-fixed": "#29074a",
-            "error-container": "#93000a",
-            "inverse-surface": "#dce2f7",
-            "error": "#ffb4ab",
             "surface-container-highest": "#2e3545",
-            "on-primary-fixed-variant": "#573878",
-            "primary-fixed-dim": "#dbb8ff",
             "surface": "#0c1322",
             "primary-container": "#d8b4fe",
-            "surface-tint": "#dbb8ff",
             "surface-container-high": "#232a3a",
-            "outline": "#968e9a",
-            "on-primary-container": "#604283",
             "background": "#0c1322",
-            "outline-variant": "#4a454f",
-            "on-tertiary": "#293040",
-            "surface-container-lowest": "#070e1d",
             "on-surface": "#dce2f7",
             "primary": "#ecd7ff",
-            "tertiary-container": "#bcc2d7",
-            "on-tertiary-container": "#495061",
-            "on-tertiary-fixed": "#141b2b",
-            "on-error": "#690005",
-            "secondary-container": "#444558",
-            "on-secondary-fixed": "#181a2b",
             "on-background": "#dce2f7",
-            "on-secondary-container": "#b3b3c9",
-            "on-secondary-fixed-variant": "#444558",
             "on-surface-variant": "#cdc3d0",
-            "secondary": "#c4c5db",
-            "tertiary-fixed-dim": "#c0c6db",
-            "primary-fixed": "#efdbff",
-            "on-secondary": "#2d2f40",
-            "inverse-primary": "#6f5092",
-            "on-primary": "#3f2160",
-            "surface-dim": "#0c1322",
-            "secondary-fixed": "#e1e1f7",
-            "tertiary-fixed": "#dce2f7",
-            "secondary-fixed-dim": "#c4c5db"
-          },
-          "borderRadius": {
-            "DEFAULT": "0.125rem",
-            "lg": "0.25rem",
-            "xl": "0.5rem",
-            "full": "0.75rem"
+            "outline": "#968e9a",
+            "outline-variant": "#4a454f"
           },
           "fontFamily": {
             "headline": ["Space Grotesk"],
-            "body": ["Inter"],
-            "label": ["Inter"]
+            "body": ["Inter"]
           }
         }
       }
     }
   </script>
 
-  <!-- Firebase Context Loader Dependencies -->
   <script type="module">
     import { initializeApp } from 'https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js';
     import { getAuth } from 'https://www.gstatic.com/firebasejs/9.23.0/firebase-auth.js';
@@ -124,7 +93,6 @@
 
 <body class="bg-background selection:bg-primary/30">
 
-  <!-- Shared TopAppBar Navigation -->
   <header class="bg-[#0c1322]/60 backdrop-blur-xl top-0 sticky z-50 border-b border-white/5">
     <div class="flex justify-between items-center px-8 py-4 w-full max-w-screen-2xl mx-auto">
       <a href="index.html" class="flex items-center gap-2 text-2xl font-bold tracking-tighter text-transparent bg-clip-text bg-gradient-to-br from-purple-200 to-purple-400 font-['Space_Grotesk']">
@@ -136,6 +104,10 @@
         <a class="text-slate-400 hover:text-purple-200 transition-colors" href="status.html">Order Status</a>
       </nav>
       <div class="flex items-center gap-6">
+        <div class="hidden lg:flex items-center bg-surface-container-low px-4 py-2 rounded-xl border border-white/5">
+          <span class="material-symbols-outlined text-slate-500 mr-2">search</span>
+          <input id="global-search-input" class="bg-transparent border-none focus:ring-0 text-sm w-48 text-on-surface placeholder-slate-500" placeholder="Search products..." type="text"/>
+        </div>
         <div class="flex items-center gap-4 text-purple-300">
           <button id="cart-link" class="active:scale-95 duration-150 relative p-1">
             <span class="material-symbols-outlined text-2xl">shopping_cart</span>
@@ -146,63 +118,16 @@
     </div>
   </header>
 
-  <main class="max-w-screen-2xl mx-auto px-8 py-12">
-    <div class="flex flex-col md:flex-row gap-12">
+  <main class="max-w-screen-2xl mx-auto px-8 py-12 relative">
+    
+    <div class="flex flex-col-reverse md:flex-row gap-12 items-start">
       
-      <!-- Sidebar Filters Area -->
-      <aside class="w-full md:w-64 flex-shrink-0 space-y-10">
-        <div>
-          <h2 class="text-xs font-bold uppercase tracking-[0.2em] text-primary mb-6">Laboratory Filters</h2>
-          
-          <!-- Shared Realtime Search Hook Input -->
-          <div class="relative mb-10">
-            <input id="search-input" class="w-full bg-surface-container-lowest border-b-2 border-surface-container-highest px-0 py-3 text-sm focus:border-primary focus:ring-0 transition-all placeholder:text-outline-variant text-on-surface" placeholder="Search components..." type="text"/>
-            <span class="material-symbols-outlined absolute right-0 top-3 text-outline-variant">search</span>
-          </div>
-          
-          <!-- Interactive Filters -->
-          <div class="space-y-8">
-            <!-- Price Range Selector -->
-            <div>
-              <span class="text-[10px] uppercase tracking-widest text-outline block mb-4">Price Orbit</span>
-              <div class="h-1 bg-surface-container-high rounded-full relative">
-                <div class="absolute left-0 right-0 h-full bg-primary-container rounded-full"></div>
-              </div>
-              <div class="flex justify-between mt-3 text-[10px] font-mono text-outline">
-                <span>৳0</span>
-                <span>৳50,000+</span>
-              </div>
-            </div>
-
-            <!-- Dynamic Category List Checklist Filters -->
-            <div>
-              <span class="text-[10px] uppercase tracking-widest text-outline block mb-4">Core Inventory</span>
-              <div id="category-filters-container" class="space-y-3">
-                <!-- script.js can insert dynamic filter checkboxes here if configured, or general catalog selectors -->
-                <div class="text-xs text-outline-variant italic">Filtering synced via unified layout rules.</div>
-              </div>
-            </div>
-            
-            <!-- Structural Layout Components Checklist placeholders -->
-            <div>
-              <span class="text-[10px] uppercase tracking-widest text-outline block mb-4">Form Factor</span>
-              <div class="grid grid-cols-2 gap-2">
-                <button class="bg-surface-container-highest text-primary text-[10px] font-bold py-2 rounded-xl">ALL</button>
-                <button class="bg-surface-container-low text-on-surface-variant text-[10px] font-bold py-2 rounded-xl hover:bg-surface-container-high transition-colors">60%</button>
-                <button class="bg-surface-container-low text-on-surface-variant text-[10px] font-bold py-2 rounded-xl hover:bg-surface-container-high transition-colors">75%</button>
-                <button class="bg-surface-container-low text-on-surface-variant text-[10px] font-bold py-2 rounded-xl hover:bg-surface-container-high transition-colors">TKL</button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </aside>
-
-      <!-- Product Dashboard Grid Area -->
-      <div class="flex-1">
+      <div class="flex-1 w-full">
         <header class="mb-12 flex flex-col md:flex-row md:items-end justify-between gap-6">
           <div>
-            <span class="text-label-md text-primary font-bold tracking-[0.2em] uppercase text-xs">Catalog.V2</span>
+            <span class="text-primary font-bold tracking-[0.2em] uppercase text-xs">Catalog.V2</span>
             <h1 class="text-5xl font-extrabold tracking-tighter mt-2 bg-clip-text text-transparent bg-gradient-to-r from-on-surface to-on-surface-variant">The Inventory</h1>
+            <p id="results-count" class="text-sm text-outline mt-2 hidden">Found 0 products</p>
           </div>
           <div class="flex items-center gap-4 text-sm text-outline">
             <select id="sort-select" class="bg-transparent border-none focus:ring-0 text-on-surface font-bold p-0 cursor-pointer">
@@ -213,11 +138,8 @@
           </div>
         </header>
 
-        <!-- Main Dynamic Products Grid Wrapper Container (Target for script.js) -->
-        <div id="products-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-          
-          <!-- Shimmer Initialization Loading States (Hidden by script.js once loaded) -->
-          <div class="bg-surface-container-low rounded-xl overflow-hidden dynamic-shimmer-placeholder">
+        <div id="products-grid" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8 min-h-[50vh]">
+          <div class="bg-surface-container-low rounded-xl overflow-hidden dynamic-shimmer-placeholder border border-white/5">
             <div class="aspect-[4/5] shimmer opacity-20"></div>
             <div class="p-6 space-y-4">
               <div class="flex justify-between"><div class="h-6 w-32 shimmer rounded-lg opacity-20"></div><div class="h-6 w-16 shimmer rounded-lg opacity-20"></div></div>
@@ -225,7 +147,7 @@
               <div class="h-4 w-2/3 shimmer rounded-lg opacity-10"></div>
             </div>
           </div>
-          <div class="bg-surface-container-low rounded-xl overflow-hidden dynamic-shimmer-placeholder">
+          <div class="bg-surface-container-low rounded-xl overflow-hidden dynamic-shimmer-placeholder border border-white/5">
             <div class="aspect-[4/5] shimmer opacity-20"></div>
             <div class="p-6 space-y-4">
               <div class="flex justify-between"><div class="h-6 w-32 shimmer rounded-lg opacity-20"></div><div class="h-6 w-16 shimmer rounded-lg opacity-20"></div></div>
@@ -233,7 +155,7 @@
               <div class="h-4 w-2/3 shimmer rounded-lg opacity-10"></div>
             </div>
           </div>
-          <div class="bg-surface-container-low rounded-xl overflow-hidden dynamic-shimmer-placeholder">
+          <div class="bg-surface-container-low rounded-xl overflow-hidden dynamic-shimmer-placeholder border border-white/5">
             <div class="aspect-[4/5] shimmer opacity-20"></div>
             <div class="p-6 space-y-4">
               <div class="flex justify-between"><div class="h-6 w-32 shimmer rounded-lg opacity-20"></div><div class="h-6 w-16 shimmer rounded-lg opacity-20"></div></div>
@@ -241,180 +163,73 @@
               <div class="h-4 w-2/3 shimmer rounded-lg opacity-10"></div>
             </div>
           </div>
-
         </div>
 
-        <!-- Pagination Footer Controls -->
-        <div class="mt-20 flex justify-center items-center gap-4">
-          <button class="w-10 h-10 flex items-center justify-center text-outline hover:text-primary transition-colors">
-            <span class="material-symbols-outlined">chevron_left</span>
-          </button>
-          <button class="w-10 h-10 flex items-center justify-center bg-primary text-on-primary-fixed font-black rounded-lg">1</button>
-          <button class="w-10 h-10 flex items-center justify-center text-outline hover:text-primary transition-colors">2</button>
-          <button class="w-10 h-10 flex items-center justify-center text-outline hover:text-primary transition-colors">
-            <span class="material-symbols-outlined">chevron_right</span>
-          </button>
-        </div>
+        <div id="pagination-container" class="mt-20 flex justify-center items-center gap-2 flex-wrap">
+          </div>
       </div>
+
+      <aside class="w-full md:w-72 flex-shrink-0 space-y-10 md:sticky md:top-28 md:max-h-[calc(100vh-8rem)] overflow-y-auto no-scrollbar pb-10">
+        <div class="bg-surface-container p-6 rounded-2xl border border-white/5 shadow-xl">
+          <h2 class="text-xs font-bold uppercase tracking-[0.2em] text-primary mb-6 flex items-center justify-between">
+            Laboratory Filters
+            <button id="reset-filters" class="text-[9px] bg-white/5 hover:bg-white/10 px-2 py-1 rounded transition-colors text-outline">RESET</button>
+          </h2>
+          
+          <div class="relative mb-10">
+            <input id="sidebar-search-input" class="w-full bg-surface-container-lowest border border-white/5 rounded-xl px-4 py-3 text-sm focus:border-primary focus:ring-1 focus:ring-primary transition-all placeholder:text-outline-variant text-on-surface" placeholder="Search components..." type="text"/>
+            <span class="material-symbols-outlined absolute right-3 top-3.5 text-outline-variant text-[20px]">search</span>
+          </div>
+          
+          <div class="space-y-8">
+            <div>
+              <div class="flex justify-between items-center mb-4">
+                <span class="text-[10px] uppercase tracking-widest text-outline block">Price Orbit</span>
+                <span id="price-display" class="text-xs font-bold text-primary">Up to ৳50,000</span>
+              </div>
+              <div class="relative h-2 bg-surface-container-highest rounded-full flex items-center">
+                <div id="price-progress" class="absolute left-0 h-full bg-primary-container rounded-full w-full pointer-events-none"></div>
+                <input type="range" id="price-slider" min="0" max="50000" step="500" value="50000" class="absolute w-full h-full opacity-0 cursor-pointer z-10">
+              </div>
+            </div>
+
+            <div>
+              <span class="text-[10px] uppercase tracking-widest text-outline block mb-4">Core Inventory</span>
+              <div id="category-filters-container" class="space-y-3">
+                <label class="flex items-center gap-3 cursor-pointer group">
+                  <input type="checkbox" value="Keyboards" class="category-checkbox rounded border-white/10 bg-surface-container-lowest text-primary focus:ring-primary focus:ring-offset-surface">
+                  <span class="text-sm text-on-surface-variant group-hover:text-white transition-colors">Keyboards</span>
+                </label>
+                <label class="flex items-center gap-3 cursor-pointer group">
+                  <input type="checkbox" value="Switches" class="category-checkbox rounded border-white/10 bg-surface-container-lowest text-primary focus:ring-primary focus:ring-offset-surface">
+                  <span class="text-sm text-on-surface-variant group-hover:text-white transition-colors">Switches</span>
+                </label>
+                <label class="flex items-center gap-3 cursor-pointer group">
+                  <input type="checkbox" value="Keycaps" class="category-checkbox rounded border-white/10 bg-surface-container-lowest text-primary focus:ring-primary focus:ring-offset-surface">
+                  <span class="text-sm text-on-surface-variant group-hover:text-white transition-colors">Keycaps</span>
+                </label>
+                <label class="flex items-center gap-3 cursor-pointer group">
+                  <input type="checkbox" value="Accessories" class="category-checkbox rounded border-white/10 bg-surface-container-lowest text-primary focus:ring-primary focus:ring-offset-surface">
+                  <span class="text-sm text-on-surface-variant group-hover:text-white transition-colors">Accessories</span>
+                </label>
+              </div>
+            </div>
+            
+            <div>
+              <span class="text-[10px] uppercase tracking-widest text-outline block mb-4">Form Factor</span>
+              <div class="grid grid-cols-2 gap-2" id="form-factor-container">
+                <button data-factor="ALL" class="form-factor-btn bg-primary/20 text-primary border border-primary/30 text-[10px] font-bold py-2 rounded-xl transition-all">ALL</button>
+                <button data-factor="60%" class="form-factor-btn bg-surface-container-low text-on-surface-variant border border-transparent text-[10px] font-bold py-2 rounded-xl hover:bg-surface-container-high transition-all">60%</button>
+                <button data-factor="75%" class="form-factor-btn bg-surface-container-low text-on-surface-variant border border-transparent text-[10px] font-bold py-2 rounded-xl hover:bg-surface-container-high transition-all">75%</button>
+                <button data-factor="TKL" class="form-factor-btn bg-surface-container-low text-on-surface-variant border border-transparent text-[10px] font-bold py-2 rounded-xl hover:bg-surface-container-high transition-all">TKL</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </aside>
+
     </div>
   </main>
 
-  <!-- Shared Interactive Cart Sliding Drawer Panel Layout -->
-  <div id="cart-slider" class="cart-slider fixed top-0 right-0 h-full w-full max-w-md bg-surface-container border-l border-white/5 shadow-2xl z-[80] transform translate-x-full flex flex-col p-6">
-    <div class="flex justify-between items-center pb-6 border-b border-white/5 mb-4">
-      <h2 class="headline font-2xl font-bold text-on-surface flex items-center gap-2">
-        <span class="material-symbols-outlined text-purple-300">shopping_cart</span> Shopping Cart
-      </h2>
-      <button id="close-cart" class="text-slate-400 hover:text-white text-3xl font-light">&times;</button>
-    </div>
-    
-    <!-- Dynamic Cart Content Target Container -->
-    <div id="cart-items" class="flex-1 overflow-y-auto space-y-4 pr-1"></div>
-    
-    <div id="cart-empty" class="text-center py-12 text-slate-500 hidden">
-      <span class="material-symbols-outlined text-5xl block mb-2">production_quantity_limits</span>
-      Your cart is empty
-    </div>
-
-    <div class="pt-4 border-t border-white/5 mt-4 space-y-4">
-      <div class="flex justify-between items-center text-lg">
-        <span class="text-slate-400">Estimated Total:</span>
-        <span id="cart-total" class="font-bold text-primary text-xl">৳0</span>
-      </div>
-      <button id="checkout-cart" class="w-full bg-gradient-to-r from-primary to-primary-container text-on-primary-fixed font-bold py-4 rounded-xl shadow-lg hover:brightness-110 transition-all flex items-center justify-center gap-2">
-        Proceed to Checkout <span class="material-symbols-outlined text-sm">arrow_forward</span>
-      </button>
-    </div>
-  </div>
-
-  <!-- Shared Global Checkout Details Modal Panel Layout -->
-  <div id="cart-checkout-modal" class="modal fixed inset-0 z-[90] overflow-y-auto hidden items-center justify-center p-4">
-    <div class="bg-surface-container max-w-2xl w-full rounded-2xl border border-white/5 shadow-2xl overflow-hidden max-h-[90vh] flex flex-col">
-      <div class="flex justify-between items-center px-6 py-4 border-b border-white/5 bg-surface-container-high">
-        <h2 class="headline text-xl font-bold text-on-surface">Checkout Details</h2>
-        <button id="cart-close-modal-btn" class="text-xs uppercase bg-surface-variant hover:bg-white/10 px-3 py-2 rounded-lg text-slate-300 transition-colors">Close</button>
-      </div>
-      
-      <form id="cart-checkout-form" class="p-6 space-y-4 overflow-y-auto flex-1 text-sm">
-        <!-- Live Checkout Items Hooks Breakdown -->
-        <div id="cart-co-items" class="space-y-2 border-b border-white/5 pb-4"></div>
-        
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div>
-            <label class="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1">Delivery Fee</label>
-            <input id="cart-co-delivery" class="w-full bg-surface-container-low border border-white/5 rounded-xl text-slate-400 py-3 focus:ring-0" readonly>
-          </div>
-          <div>
-            <label class="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1">Total Amount</label>
-            <input id="cart-co-total" class="w-full bg-surface-container-low border border-white/5 rounded-xl text-primary font-bold py-3 focus:ring-0" readonly>
-          </div>
-        </div>
-        
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div>
-            <label class="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1">Your Name</label>
-            <input id="cart-co-name" class="w-full bg-surface-container-low border border-white/10 rounded-xl text-on-surface focus:border-purple-500 focus:ring-purple-500 py-3" required>
-          </div>
-          <div>
-            <label class="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1">Phone Number</label>
-            <input id="cart-co-phone" type="tel" class="w-full bg-surface-container-low border border-white/10 rounded-xl text-on-surface focus:border-purple-500 focus:ring-purple-500 py-3" required>
-          </div>
-        </div>
-        
-        <div>
-          <label class="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1">Full Delivery Address</label>
-          <textarea id="cart-co-address" rows="3" class="w-full bg-surface-container-low border border-white/10 rounded-xl text-on-surface focus:border-purple-500 focus:ring-purple-500 py-2" required></textarea>
-        </div>
-        
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div>
-            <label class="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1">Payment Method</label>
-            <select id="cart-co-payment" class="w-full bg-surface-container-low border border-white/10 rounded-xl text-on-surface focus:border-purple-500 focus:ring-purple-500 py-3" required>
-              <option value="">Select Option</option>
-              <option value="Cash on Delivery">Cash on Delivery</option>
-              <option value="Bkash">bKash</option>
-            </select>
-          </div>
-          <div>
-            <label class="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1">Merchant Number (Pay to)</label>
-            <input id="cart-co-payment-number" class="w-full bg-surface-container-low border border-white/5 rounded-xl text-slate-400 py-3 focus:ring-0" readonly>
-          </div>
-        </div>
-        
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div>
-            <label class="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1">Payable Amount Now (tk)</label>
-            <input id="cart-co-pay-now" class="w-full bg-surface-container-low border border-white/5 rounded-xl text-slate-400 py-3 focus:ring-0" readonly>
-          </div>
-          <div>
-            <label class="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1">Due Amount on Delivery (tk)</label>
-            <input id="cart-co-due-amount" class="w-full bg-surface-container-low border border-white/5 rounded-xl text-slate-400 py-3 focus:ring-0" readonly>
-          </div>
-        </div>
-        
-        <div>
-          <label class="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1">Transaction ID (For Mobile Banking)</label>
-          <input id="cart-co-txn" class="w-full bg-surface-container-low border border-white/10 rounded-xl text-on-surface focus:border-purple-500 focus:ring-purple-500 py-3" placeholder="Enter Bkash TxnID if applicable">
-        </div>
-        
-        <div class="py-2">
-          <label class="inline-flex items-center text-slate-300 cursor-pointer">
-            <input type="checkbox" id="cart-co-policy" class="rounded border-white/10 bg-surface-container-low text-purple-500 focus:ring-purple-500 mr-2" required> 
-            <span>I agree to the <a href="status.html" class="text-primary underline ml-1">Order Policy</a></span>
-          </label>
-        </div>
-        
-        <p id="cart-co-note" class="text-xs text-purple-300 italic bg-purple-950/30 p-3 rounded-xl border border-purple-900/40"></p>
-        
-        <button id="cart-place-order-btn" type="submit" class="w-full bg-gradient-to-r from-primary to-primary-container text-on-primary-fixed font-bold py-4 rounded-xl shadow-lg hover:brightness-110 transition-all text-base mt-2">
-          Place Order Securely
-        </button>
-      </form>
-    </div>
-  </div>
-
-  <!-- Shared Global Footer -->
-  <footer class="bg-slate-950 w-full py-12 px-8 mt-24 border-t border-white/5 mb-16 md:mb-0">
-    <div class="max-w-screen-2xl mx-auto flex flex-col md:flex-row justify-between items-center gap-8">
-      <div class="font-['Space_Grotesk'] text-lg font-bold text-slate-200 tracking-wider">
-        THE GEEK SHOP
-      </div>
-      <div class="flex gap-6 items-center">
-        <a href="https://www.facebook.com/thegeek.shop0" target="_blank" class="opacity-70 hover:opacity-100 transition-opacity">
-          <img src="facebook.png" alt="Facebook" class="w-7 h-7">
-        </a>
-        <a href="https://www.instagram.com/thegeek.shop0" target="_blank" class="opacity-70 hover:opacity-100 transition-opacity">
-          <img src="instagram.png" alt="Instagram" class="w-7 h-7">
-        </a>
-        <a href="https://wa.me/01960902526" target="_blank" class="opacity-70 hover:opacity-100 transition-opacity">
-          <img src="whatsapp.png" alt="WhatsApp" class="w-7 h-7">
-        </a>
-      </div>
-      <div class="font-['Inter'] text-[11px] tracking-widest text-slate-500 uppercase text-center md:text-right">
-        © All rights reserved by The Geek Shop
-      </div>
-    </div>
-  </footer>
-
-  <!-- Bottom Mobile Navigation Bar Menu -->
-  <nav class="fixed bottom-0 left-0 w-full flex justify-around items-center px-2 py-3 md:hidden bg-[#0c1322]/80 backdrop-blur-lg border-t border-white/5 z-[70]">
-    <a class="flex flex-col items-center justify-center text-slate-400 hover:text-slate-200 transition-colors" href="index.html">
-      <span class="material-symbols-outlined">home</span>
-      <span class="text-[9px] font-bold uppercase tracking-tighter mt-0.5">Home</span>
-    </a>
-    <a class="flex flex-col items-center justify-center text-purple-200 bg-purple-500/20 rounded-xl px-4 py-1.5 transition-all" href="products.html">
-      <span class="material-symbols-outlined">grid_view</span>
-      <span class="text-[9px] font-bold uppercase tracking-tighter mt-0.5">Shop</span>
-    </a>
-    <a id="mobile-cart-trigger" class="flex flex-col items-center justify-center text-slate-400 hover:text-slate-200 transition-colors cursor-pointer" onclick="document.getElementById('cart-slider').classList.remove('translate-x-full')">
-      <span class="material-symbols-outlined">shopping_cart</span>
-      <span class="text-[9px] font-bold uppercase tracking-tighter mt-0.5">Cart</span>
-    </a>
-    <a class="flex flex-col items-center justify-center text-slate-400 hover:text-slate-200 transition-colors" href="admin.html">
-      <span class="material-symbols-outlined">admin_panel_settings</span>
-      <span class="text-[9px] font-bold uppercase tracking-tighter mt-0.5">Admin</span>
-    </a>
-  </nav>
-
-</body>
+  </body>
 </html>
