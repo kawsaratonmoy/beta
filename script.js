@@ -263,9 +263,6 @@ async function initHomePage() {
       productsContainer.appendChild(createProductCard(p, products));
     });
   }
-
-  // NOTE: The dynamic Categories generation block was safely removed here 
-  // to preserve your new static HTML layout!
 }
 
 // 2. PRODUCTS PAGE LOGIC
@@ -273,13 +270,11 @@ async function initProductsPage() {
   const container = document.getElementById('products-grid');
   if (!container) return;
 
-  // FIX: Check for category in URL parameters
   const params = new URLSearchParams(window.location.search);
   const categoryFilter = params.get('category');
 
   const products = await loadProducts();
   
-  // Filter products if category is present
   let productsToShow = products;
   if (categoryFilter) {
     productsToShow = products.filter(p => p.category === categoryFilter);
@@ -377,7 +372,6 @@ async function initProductPage() {
           Add to Cart
         </button>
       `;
-      // Direct Navigation to the standalone checkout page with the product ID
       document.getElementById('btn-buy-now').onclick = () => { window.location.href = `checkout.html?id=${product.id}`; };
       document.getElementById('btn-add-cart').onclick = () => { window.addToCart(product.id); alert('Added to cart!'); };
     }
@@ -400,9 +394,7 @@ async function initCheckoutPage() {
   let checkoutItems = [];
   let hasPreOrder = false;
 
-  // STEP 1: LOAD DATA
   if (singleProductId) {
-    // A. Single Product Data
     const p = products.find(x => x.id === singleProductId);
     if (!p) {
       alert('Product not found.');
@@ -421,7 +413,6 @@ async function initCheckoutPage() {
     });
     if (p.availability === 'Pre Order') hasPreOrder = true;
   } else {
-    // B. Cart Data
     const cart = getCart();
     if (cart.length === 0) {
       alert('Your cart is empty!');
@@ -438,7 +429,6 @@ async function initCheckoutPage() {
     });
   }
 
-  // STEP 2: RENDER ITEMS TO DOM
   const itemsList = document.getElementById('co-items-list');
   let subtotal = 0;
   if (itemsList) {
@@ -462,7 +452,6 @@ async function initCheckoutPage() {
   const subtotalDisplay = document.getElementById('co-subtotal-display');
   if (subtotalDisplay) subtotalDisplay.textContent = `৳${subtotal.toFixed(2)}`;
 
-  // STEP 3: PRE-ORDER SPECIFIC LOCKS
   const bkashRadio = document.getElementById('pay-bkash');
   const codRadio = document.getElementById('pay-cod');
   if (hasPreOrder && codRadio) {
@@ -471,7 +460,6 @@ async function initCheckoutPage() {
     bkashRadio.checked = true;
   }
 
-  // STEP 4: DYNAMIC CALCULATION FUNCTION
   function updateCheckoutTotals() {
     const address = document.getElementById('co-address')?.value || '';
     const deliveryFee = calculateDeliveryFee(address);
@@ -511,19 +499,15 @@ async function initCheckoutPage() {
     else if (selectedMethod === 'Cash on Delivery') {
       if(splitDisplay) splitDisplay.classList.add('hidden');
       if(merchantLabel) merchantLabel.textContent = COD_NUMBER;
-      if(txnContainer) txnContainer.classList.remove('hidden'); // Ensure Txn ID shows for COD Delivery Fee
+      if(txnContainer) txnContainer.classList.remove('hidden');
       if(paymentNote) paymentNote.textContent = `Please send ONLY the delivery charge ৳${deliveryFee.toFixed(2)} to ${COD_NUMBER} via bKash Send Money to confirm. Subtotal collected on delivery.`;
     }
   }
 
-  // Attach dynamic listeners
   document.getElementById('co-address')?.addEventListener('input', updateCheckoutTotals);
   document.querySelectorAll('input[name="payment_method"]').forEach(r => r.addEventListener('change', updateCheckoutTotals));
-  
-  // Fire once on load to populate defaults
   updateCheckoutTotals();
 
-  // STEP 5: FINAL ORDER SUBMISSION
   const btn = document.getElementById('final-checkout-btn');
   if(btn) {
     btn.addEventListener('click', async () => {
@@ -539,7 +523,6 @@ async function initCheckoutPage() {
         return;
       }
       
-      // TRANSACTION ID STRICT REQUIREMENT FOR BOTH BKASH AND COD
       if ((paymentMethod === 'Bkash' || paymentMethod === 'Cash on Delivery') && !txnId) {
         alert("Transaction ID is required to verify your payment/delivery charge.");
         return;
@@ -589,7 +572,6 @@ async function initCheckoutPage() {
 
         const docRef = await addDoc(collection(db, 'orders'), orderData);
         
-        // If it was a cart checkout, clear the cart
         if (!singleProductId) {
           localStorage.removeItem('cart');
           updateCartUI();
@@ -606,7 +588,6 @@ async function initCheckoutPage() {
   }
 }
 
-// Custom Terminal Success Modal
 function showOrderConfirmation(orderId) {
   const modal = document.createElement('div');
   modal.className = "fixed inset-0 z-[200] flex items-center justify-center p-6 bg-slate-950/90 backdrop-blur-md opacity-0 transition-opacity duration-500";
@@ -617,7 +598,7 @@ function showOrderConfirmation(orderId) {
       </div>
       <h2 class="font-headline text-3xl font-bold tracking-tighter text-on-surface mb-2">Transmission<br>Successful</h2>
       <p class="text-outline text-sm mb-6 leading-relaxed">Dispatch manifest <span class="text-primary font-mono font-bold">#${orderId.slice(-6).toUpperCase()}</span> has been uploaded to the lattice.</p>
-      <button onclick="window.location.href='index.html'" class="w-full signature-gradient text-on-primary-fixed font-headline font-bold py-4 rounded-xl tracking-widest uppercase shadow-lg shadow-purple-500/20 active:scale-[0.98] transition-all">
+      <button onclick="window.location.href='index.html'" class="w-full bg-primary text-white font-headline font-bold py-4 rounded-xl tracking-widest uppercase shadow-lg shadow-purple-500/20 active:scale-[0.98] transition-all">
         Return to Base
       </button>
     </div>
@@ -633,29 +614,22 @@ function showOrderConfirmation(orderId) {
 document.addEventListener('DOMContentLoaded', async () => {
   updateCartUI();
 
-  // Strict routing check to prevent loops
-  const isHome = !!document.getElementById('interest-products');
-  const isProducts = !!document.getElementById('products-grid');
-  const isProduct = !!document.getElementById('product-section');
-  const isCheckoutPage = window.location.pathname.includes('checkout.html');
-
-  if (isHome) await initHomePage();
-  if (isProducts) await initProductsPage();
-  if (isProduct) await initProductPage();
-  
-  // Only trigger checkout logic IF user is explicitly on checkout.html
-  if (isCheckoutPage) await initCheckoutPage();
-
-  // Sidebar Cart UI Triggers
+  // TOP LEVEL UI EVENT LISTENERS
   document.getElementById('cart-link')?.addEventListener('click', () => {
-    document.getElementById('cart-slider').classList.remove('hidden');
-    document.getElementById('cart-slider').classList.remove('translate-x-full');
-  });
-  document.getElementById('close-cart')?.addEventListener('click', () => {
-    document.getElementById('cart-slider').classList.add('translate-x-full');
+    const slider = document.getElementById('cart-slider');
+    if (slider) {
+      slider.classList.remove('hidden');
+      slider.classList.remove('translate-x-full');
+    }
   });
   
-  // Checkout from Sidebar Cart (Redirect to Checkout.html)
+  document.getElementById('close-cart')?.addEventListener('click', () => {
+    const slider = document.getElementById('cart-slider');
+    if (slider) {
+      slider.classList.add('translate-x-full');
+    }
+  });
+  
   document.getElementById('checkout-cart')?.addEventListener('click', () => {
     const cart = getCart();
     if (cart.length === 0) {
@@ -666,6 +640,17 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
 
   document.getElementById('close-viewer')?.addEventListener('click', () => {
-    document.getElementById('image-viewer').classList.add('hidden');
+    document.getElementById('image-viewer')?.classList.add('hidden');
   });
+
+  // PAGE LOGIC ROUTING
+  const isHome = !!document.getElementById('interest-products');
+  const isProducts = !!document.getElementById('products-grid');
+  const isProduct = !!document.getElementById('product-section'); // (Ensure this exists in your product.html)
+  const isCheckoutPage = window.location.pathname.includes('checkout.html');
+
+  if (isHome) await initHomePage();
+  if (isProducts) await initProductsPage();
+  if (isProduct) await initProductPage();
+  if (isCheckoutPage) await initCheckoutPage();
 });
