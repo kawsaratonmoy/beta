@@ -265,31 +265,90 @@ async function initHomePage() {
   }
 }
 
-// 2. PRODUCTS PAGE LOGIC
+// 2. PRODUCTS PAGE LOGIC (Updated with advanced filters)
 async function initProductsPage() {
   const container = document.getElementById('products-grid');
   if (!container) return;
 
-  const params = new URLSearchParams(window.location.search);
-  const categoryFilter = params.get('category');
-
   const products = await loadProducts();
   
-  let productsToShow = products;
-  if (categoryFilter) {
-    productsToShow = products.filter(p => p.category === categoryFilter);
-  }
+  const searchInput = document.getElementById('search-input');
+  const sortSelect = document.getElementById('sort-select');
+  const categoryContainer = document.getElementById('category-filters-container');
 
-  container.innerHTML = '';
+  // Extract unique categories and populate sidebar
+  const categories = ['All', ...new Set(products.map(p => p.category).filter(Boolean))];
   
-  if(productsToShow.length === 0) {
-    container.innerHTML = `<p class="text-slate-400 col-span-3 text-center py-12">No products found ${categoryFilter ? 'in category: ' + categoryFilter : ''}.</p>`;
-    return;
+  if (categoryContainer) {
+    categoryContainer.innerHTML = categories.map(cat => `
+      <label class="flex items-center gap-3 cursor-pointer group mb-2">
+        <input type="radio" name="cat-filter" value="${cat}" ${cat === 'All' ? 'checked' : ''} class="w-4 h-4 bg-surface-container-lowest border-white/10 text-primary focus:ring-primary focus:ring-offset-surface">
+        <span class="text-sm text-outline-variant group-hover:text-on-surface transition-colors">${cat}</span>
+      </label>
+    `).join('');
   }
 
-  productsToShow.forEach(p => {
-    container.appendChild(createProductCard(p, products));
-  });
+  // Check if routed here with a category URL parameter from the homepage
+  const params = new URLSearchParams(window.location.search);
+  const urlCategory = params.get('category');
+  if (urlCategory && categoryContainer) {
+     const targetRadio = document.querySelector(`input[name="cat-filter"][value="${urlCategory}"]`);
+     if (targetRadio) targetRadio.checked = true;
+  }
+
+  // Grid Render Function based on active filters
+  function renderGrid() {
+    let result = [...products];
+    
+    // Apply Search
+    if (searchInput && searchInput.value) {
+      const q = searchInput.value.toLowerCase();
+      result = result.filter(p => p.name.toLowerCase().includes(q) || (p.description && p.description.toLowerCase().includes(q)));
+    }
+
+    // Apply Category
+    const checkedCat = document.querySelector('input[name="cat-filter"]:checked');
+    if (checkedCat && checkedCat.value !== 'All') {
+      result = result.filter(p => p.category === checkedCat.value);
+    }
+
+    // Apply Sort
+    if (sortSelect) {
+      const sortVal = sortSelect.value;
+      if (sortVal === 'price-low') {
+        result.sort((a, b) => {
+          const aPrice = Number(a.price) - Number(a.discount || 0);
+          const bPrice = Number(b.price) - Number(b.discount || 0);
+          return aPrice - bPrice;
+        });
+      } else if (sortVal === 'price-high') {
+        result.sort((a, b) => {
+          const aPrice = Number(a.price) - Number(a.discount || 0);
+          const bPrice = Number(b.price) - Number(b.discount || 0);
+          return bPrice - aPrice;
+        });
+      }
+    }
+
+    // Paint to DOM
+    container.innerHTML = '';
+    if (result.length === 0) {
+      container.innerHTML = `<div class="col-span-full text-center py-12 text-outline">No products found matching your criteria.</div>`;
+      return;
+    }
+
+    result.forEach(p => {
+      container.appendChild(createProductCard(p, products));
+    });
+  }
+
+  // Bind Event Listeners
+  if (searchInput) searchInput.addEventListener('input', renderGrid);
+  if (sortSelect) sortSelect.addEventListener('change', renderGrid);
+  if (categoryContainer) categoryContainer.addEventListener('change', renderGrid);
+
+  // Initial Paint
+  renderGrid();
 }
 
 // 3. PRODUCT DETAILS PAGE LOGIC
