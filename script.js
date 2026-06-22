@@ -26,51 +26,77 @@ function getCart() {
   return cart ? JSON.parse(cart) : [];
 }
 
-// HIGH-FIDELITY PARSER FOR STRINGS
+// ====== BULLETPROOF SPECIFICATION PARSER ======
 function parseSpecsData(specData) {
   if (!specData) return {};
   if (typeof specData === 'object') return specData; 
   
   if (typeof specData === 'string') {
-    const specsObj = {};
+    if (specData.trim().startsWith('{')) {
+      try { return JSON.parse(specData); } catch(e) {}
+    }
     
-    // Dictionary of standard hardware specs to isolate values perfectly
+    const specsObj = {};
+    const parts = specData.split(':');
+    if (parts.length <= 1) return {};
+
+    // Dictionary of all possible target specification names
     const knownKeys = [
       "Material", "Legend", "Printing Process", "Key Count", "Profile", "Layout", 
       "Shine-Through", "Switch Type", "Switches", "Brand", "Model", "Connectivity", 
       "Backlight", "Battery Capacity", "Battery", "Interface", "Weight", "Size", 
-      "Features", "Type", "Polling Rate", "Lifespan", "Hotswap", "Hot-swappable", "Color"
+      "Features", "Type", "Polling Rate", "Lifespan", "Hotswap", "Hot-swappable", "Color",
+      "Mounting Style", "Case Material", "Plate Material", "Stabilizers", "Compatibility"
     ];
     
-    // Escape keys safely for regex generation
-    const escapedKeys = knownKeys.map(k => k.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')).join('|');
-    const regex = new RegExp(`\\b(${escapedKeys}):\\s*(.*?)(?=\\s*\\b(?:${escapedKeys}):|$)`, 'gi');
-    
-    let match;
-    let foundAny = false;
-    
-    while ((match = regex.exec(specData)) !== null) {
-      foundAny = true;
-      const rawKey = match[1].trim();
-      const value = match[2].trim();
+    // Sort keys descending by length so multi-word matches take absolute priority
+    knownKeys.sort((a, b) => b.length - a.length);
+
+    // The very first item before the first colon is always our initial spec name
+    let currentKey = parts[0].trim();
+
+    for (let i = 1; i < parts.length; i++) {
+      const segment = parts[i];
       
-      // Keep original casing from our known list
-      const actualKey = knownKeys.find(k => k.toLowerCase() === rawKey.toLowerCase()) || rawKey;
-      if (actualKey && value) {
-        specsObj[actualKey] = value;
+      // If it is the last chunk, the entire rest of the string is the final value
+      if (i === parts.length - 1) {
+        specsObj[currentKey] = segment.trim();
+      } else {
+        // Look backward from the end of the segment to find where the next spec name starts
+        let foundNextKey = false;
+        
+        for (const knownKey of knownKeys) {
+          const escapedKey = knownKey.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+          const regex = new RegExp(`(?:\\s+|^)(${escapedKey})$`, 'i');
+          const match = segment.match(regex);
+          
+          if (match) {
+            const nextKey = match[1].trim();
+            const valEndIndex = segment.lastIndexOf(match[0]);
+            const value = segment.substring(0, valEndIndex).trim();
+            
+            // Map the parsed pair cleanly
+            specsObj[currentKey] = value;
+            
+            // Preserve the standard clean casing from our knownKeys list
+            currentKey = knownKeys.find(k => k.toLowerCase() === nextKey.toLowerCase()) || nextKey;
+            foundNextKey = true;
+            break;
+          }
+        }
+        
+        // Fallback safety if a completely unique custom key is ever written in the database
+        if (!foundNextKey) {
+          const words = segment.trim().split(/\s+/);
+          if (words.length > 0) {
+            const nextKey = words.pop();
+            const value = words.join(' ');
+            specsObj[currentKey] = value;
+            currentKey = nextKey;
+          }
+        }
       }
     }
-    
-    // Fallback logic in case you type a completely custom unique spec key in your database
-    if (!foundAny) {
-      const fallbackRegex = /([A-Za-z0-9\-\+ ]+?):\s*(.+?)(?=\s+[A-Za-z0-9\-\+ ]+?:|$)/g;
-      while ((match = fallbackRegex.exec(specData)) !== null) {
-        const key = match[1].trim();
-        const value = match[2].trim();
-        if (key && value) specsObj[key] = value;
-      }
-    }
-    
     return specsObj;
   }
   return {};
@@ -530,7 +556,7 @@ async function initProductPage() {
     document.getElementById('product-detailed-desc').innerHTML = product.detailedDescription || product.description || '<p>No detailed background information available.</p>';
   }
 
-  // Right Section: Specification Table Engine
+  // Right Section: Clean UI Specification Table
   const specsGrid = document.getElementById('product-specs-grid');
   if (specsGrid) {
     specsGrid.innerHTML = '';
@@ -539,10 +565,10 @@ async function initProductPage() {
     if (Object.keys(parsedSpecs).length > 0) {
       Object.entries(parsedSpecs).forEach(([key, value]) => {
         if (key.toLowerCase() !== 'id') {
-          const printableKey = key.includes(' ') ? key : key.replace(/([A-Z])/g, ' $1').trim();
+          // Display the spec name cleanly as it was mapped
           specsGrid.innerHTML += `
             <div class="flex justify-between items-end pb-4 border-b border-outline-variant/10 last:border-0 last:pb-0 pt-4 first:pt-0">
-              <span class="text-slate-400 font-medium capitalize">${printableKey}</span>
+              <span class="text-slate-400 font-medium">${key}</span>
               <span class="font-display text-xl text-right">${value}</span>
             </div>`;
         }
