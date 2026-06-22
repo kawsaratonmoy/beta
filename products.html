@@ -3,36 +3,19 @@
 <head>
   <meta charset="utf-8"/>
   <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
-  <title>The Geek Shop | Kinetic Laboratory</title>
+  <title>The Geek Shop | Products</title>
   <link rel="icon" type="image/x-icon" href="logo t.png"> 
   <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
   <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
   
   <style>
-    .material-symbols-outlined {
-      font-variation-settings: 'FILL' 0, 'wght' 300, 'GRAD' 0, 'opsz' 24;
-    }
-    .shimmer {
-      background: linear-gradient(90deg, #191f2f 25%, #2e3545 50%, #191f2f 75%);
-      background-size: 200% 100%;
-      animation: shimmer 2s infinite linear;
-    }
-    @keyframes shimmer {
-      0% { background-position: -200% 0; }
-      100% { background-position: 200% 0; }
-    }
-    body { 
-      font-family: 'Inter', sans-serif; 
-      background-color: #0c1322; 
-      color: #dce2f7; 
-      overflow-x: hidden;
-    }
-    h1, h2, h3, .headline { font-family: 'Space Grotesk', sans-serif; }
-    
-    .cart-slider {
-      transition: transform 0.3s ease-in-out;
-    }
+    .material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 300, 'GRAD' 0, 'opsz' 24; }
+    .shimmer { background: linear-gradient(90deg, #191f2f 25%, #2e3545 50%, #191f2f 75%); background-size: 200% 100%; animation: shimmer 2s infinite linear; }
+    @keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
+    body { font-family: 'Inter', sans-serif; background-color: #0c1322; color: #dce2f7; overflow-x: hidden; }
+    h1, h2, h3, .headline, .font-display { font-family: 'Space Grotesk', sans-serif; }
+    .cart-slider { transition: transform 0.3s ease-in-out; }
   </style>
 
   <script id="tailwind-config">
@@ -41,180 +24,97 @@
       theme: {
         extend: {
           "colors": {
-            "surface-bright": "#323949",
-            "surface-container": "#191f2f",
-            "on-error-container": "#ffdad6",
-            "on-tertiary-fixed-variant": "#404758",
-            "surface-variant": "#2e3545",
-            "tertiary": "#d8def3",
-            "surface-container-low": "#141b2b",
-            "inverse-on-surface": "#293040",
-            "on-primary-fixed": "#29074a",
-            "error-container": "#93000a",
-            "inverse-surface": "#dce2f7",
-            "error": "#ffb4ab",
-            "surface-container-highest": "#2e3545",
-            "on-primary-fixed-variant": "#573878",
-            "primary-fixed-dim": "#dbb8ff",
-            "surface": "#0c1322",
-            "primary-container": "#d8b4fe",
-            "surface-tint": "#dbb8ff",
-            "surface-container-high": "#232a3a",
-            "outline": "#968e9a",
-            "on-primary-container": "#604283",
-            "background": "#0c1322",
-            "outline-variant": "#4a454f",
-            "on-tertiary": "#293040",
-            "surface-container-lowest": "#070e1d",
-            "on-surface": "#dce2f7",
-            "primary": "#ecd7ff",
-            "tertiary-container": "#bcc2d7",
-            "on-tertiary-container": "#495061",
-            "on-tertiary-fixed": "#141b2b",
-            "on-error": "#690005",
-            "secondary-container": "#444558",
-            "on-secondary-fixed": "#181a2b",
-            "on-background": "#dce2f7",
-            "on-secondary-container": "#b3b3c9",
-            "on-secondary-fixed-variant": "#444558",
-            "on-surface-variant": "#cdc3d0",
-            "secondary": "#c4c5db",
-            "tertiary-fixed-dim": "#c0c6db",
-            "primary-fixed": "#efdbff",
-            "on-secondary": "#2d2f40",
-            "inverse-primary": "#6f5092",
-            "on-primary": "#3f2160",
-            "surface-dim": "#0c1322",
-            "secondary-fixed": "#e1e1f7",
-            "tertiary-fixed": "#dce2f7",
-            "secondary-fixed-dim": "#c4c5db"
-          },
-          "borderRadius": {
-            "DEFAULT": "0.125rem",
-            "lg": "0.25rem",
-            "xl": "0.5rem",
-            "full": "0.75rem"
-          },
-          "fontFamily": {
-            "headline": ["Space Grotesk"],
-            "body": ["Inter"],
-            "label": ["Inter"]
+            "surface-bright": "#323949", "surface-container": "#191f2f", "surface-variant": "#2e3545",
+            "surface-container-low": "#141b2b", "inverse-surface": "#dce2f7", "surface-container-highest": "#2e3545",
+            "surface": "#0c1322", "surface-container-high": "#232a3a", "outline": "#968e9a",
+            "background": "#0c1322", "outline-variant": "#4a454f", "surface-container-lowest": "#070e1d",
+            "on-surface": "#dce2f7", "primary": "#ecd7ff", "on-background": "#dce2f7",
+            "on-surface-variant": "#cdc3d0", "primary-fixed": "#efdbff", "on-primary": "#3f2160",
+            "primary-container": "#d8b4fe", "on-primary-fixed": "#29074a"
           }
         }
       }
     }
   </script>
-
-  <script type="module">
-    import { initializeApp } from 'https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js';
-    import { getAuth } from 'https://www.gstatic.com/firebasejs/9.23.0/firebase-auth.js';
-    import { getFirestore } from 'https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js';
-  </script>
-  <script type="module" src="script.js"></script>
 </head>
 
-<body class="bg-background selection:bg-primary/30">
+<body class="bg-background selection:bg-primary/30 min-h-screen flex flex-col">
 
-  <header class="bg-[#0c1322]/60 backdrop-blur-xl top-0 sticky z-50 border-b border-white/5">
-    <div class="flex justify-between items-center px-8 py-4 w-full max-w-screen-2xl mx-auto">
+  <header class="bg-[#0c1322]/80 backdrop-blur-xl top-0 sticky z-[60] border-b border-white/5">
+    <div class="flex justify-between items-center px-6 lg:px-8 py-4 w-full max-w-screen-2xl mx-auto">
       <a href="index.html" class="flex items-center gap-2 text-2xl font-bold tracking-tighter text-transparent bg-clip-text bg-gradient-to-br from-purple-200 to-purple-400 font-['Space_Grotesk']">
-        <img src="logo.png" alt="The Geek Shop Logo" class="h-10 object-contain inline-block">
+        <img src="logo.png" alt="The Geek Shop Logo" class="h-10 object-contain inline-block" onerror="this.style.display='none'">
         <span>The Geek Shop</span>
       </a>
+      
+      <div class="hidden md:flex items-center relative w-96">
+        <span class="material-symbols-outlined absolute left-3 text-slate-500 text-sm">search</span>
+        <input type="text" id="global-search-input" placeholder="Search components globally..." class="w-full bg-surface-container-lowest border border-white/5 rounded-xl pl-9 pr-4 py-2 text-sm text-on-surface focus:outline-none focus:border-primary/50 focus:ring-0 placeholder:text-outline-variant transition-all">
+      </div>
+
       <nav class="hidden md:flex items-center space-x-8 font-['Space_Grotesk'] tracking-tight">
         <a class="text-purple-300 border-b-2 border-purple-400 pb-1" href="products.html">Products</a>
         <a class="text-slate-400 hover:text-purple-200 transition-colors" href="status.html">Order Status</a>
       </nav>
+      
       <div class="flex items-center gap-6">
-        <div class="flex items-center gap-4 text-purple-300">
-          <button id="cart-link" class="active:scale-95 duration-150 relative p-1">
-            <span class="material-symbols-outlined text-2xl">shopping_cart</span>
-            <span id="cart-count" class="absolute -top-1 -right-2 bg-purple-500 text-white text-[10px] font-bold rounded-full h-5 w-5 flex items-center justify-center border border-[#0c1322]">0</span>
-          </button>
-        </div>
+        <button id="cart-link" class="active:scale-95 duration-150 relative p-2 bg-surface-container-low rounded-xl border border-white/5 hover:bg-surface-variant transition-all">
+          <span class="material-symbols-outlined text-slate-300 block">shopping_cart</span>
+          <span id="cart-count" class="absolute -top-2 -right-2 bg-purple-500 text-white text-[10px] font-bold rounded-full h-5 w-5 flex items-center justify-center border border-[#0c1322]">0</span>
+        </button>
       </div>
     </div>
   </header>
 
-  <main class="max-w-screen-2xl mx-auto px-8 py-12">
-    <div class="flex flex-col md:flex-row gap-12">
-      
-      <aside class="w-full md:w-64 flex-shrink-0 space-y-10">
-        <div>
-          <h2 class="text-xs font-bold uppercase tracking-[0.2em] text-primary mb-6">Laboratory Filters</h2>
-          
-          <div class="relative mb-10">
-            <input id="search-input" class="w-full bg-surface-container-lowest border-b-2 border-surface-container-highest px-0 py-3 text-sm focus:border-primary focus:ring-0 transition-all placeholder:text-outline-variant text-on-surface" placeholder="Search components..." type="text"/>
-            <span class="material-symbols-outlined absolute right-0 top-3 text-outline-variant">search</span>
-          </div>
-          
-          <div class="space-y-8">
+  <main class="flex-1 max-w-screen-2xl w-full mx-auto px-6 lg:px-8 py-8 lg:py-12 grid grid-cols-1 lg:grid-cols-4 gap-8">
+    
+    <aside class="lg:col-span-1 space-y-6 bg-surface-container-low border border-white/5 p-6 rounded-2xl h-fit sticky top-28">
+      <div class="flex items-center justify-between border-b border-white/5 pb-4">
+        <h2 class="font-display font-bold text-lg tracking-tight">Laboratory Filters</h2>
+        <button id="clear-filters-btn" class="text-xs text-primary hover:text-primary-fixed transition-colors font-medium">Reset</button>
+      </div>
 
-            <div>
-              <span class="text-[10px] uppercase tracking-widest text-outline block mb-4">Core Inventory</span>
-              <div id="category-filters-container" class="space-y-3">
-                <div class="text-xs text-outline-variant italic">Loading categories...</div>
-              </div>
-            </div>
-            
-          </div>
-        </div>
-      </aside>
-
-      <div class="flex-1">
-        <header class="mb-12 flex flex-col md:flex-row md:items-end justify-between gap-6">
-          <div>
-            <span class="text-label-md text-primary font-bold tracking-[0.2em] uppercase text-xs">Catalog.V2</span>
-            <h1 class="text-5xl font-extrabold tracking-tighter mt-2 bg-clip-text text-transparent bg-gradient-to-r from-on-surface to-on-surface-variant">The Inventory</h1>
-          </div>
-          <div class="flex items-center gap-4 text-sm text-outline">
-            <select id="sort-select" class="bg-transparent border-none focus:ring-0 text-on-surface font-bold p-0 cursor-pointer">
-              <option value="latest" class="bg-surface-container">Latest Arrivals</option>
-              <option value="price-low" class="bg-surface-container">Price: Low-High</option>
-              <option value="price-high" class="bg-surface-container">Price: High-Low</option>
-            </select>
-          </div>
-        </header>
-
-        <div id="products-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-          
-          <div class="bg-surface-container-low rounded-xl overflow-hidden dynamic-shimmer-placeholder">
-            <div class="aspect-[4/5] shimmer opacity-20"></div>
-            <div class="p-6 space-y-4">
-              <div class="flex justify-between"><div class="h-6 w-32 shimmer rounded-lg opacity-20"></div><div class="h-6 w-16 shimmer rounded-lg opacity-20"></div></div>
-              <div class="h-4 w-full shimmer rounded-lg opacity-10"></div>
-              <div class="h-4 w-2/3 shimmer rounded-lg opacity-10"></div>
-            </div>
-          </div>
-          <div class="bg-surface-container-low rounded-xl overflow-hidden dynamic-shimmer-placeholder">
-            <div class="aspect-[4/5] shimmer opacity-20"></div>
-            <div class="p-6 space-y-4">
-              <div class="flex justify-between"><div class="h-6 w-32 shimmer rounded-lg opacity-20"></div><div class="h-6 w-16 shimmer rounded-lg opacity-20"></div></div>
-              <div class="h-4 w-full shimmer rounded-lg opacity-10"></div>
-              <div class="h-4 w-2/3 shimmer rounded-lg opacity-10"></div>
-            </div>
-          </div>
-          <div class="bg-surface-container-low rounded-xl overflow-hidden dynamic-shimmer-placeholder">
-            <div class="aspect-[4/5] shimmer opacity-20"></div>
-            <div class="p-6 space-y-4">
-              <div class="flex justify-between"><div class="h-6 w-32 shimmer rounded-lg opacity-20"></div><div class="h-6 w-16 shimmer rounded-lg opacity-20"></div></div>
-              <div class="h-4 w-full shimmer rounded-lg opacity-10"></div>
-              <div class="h-4 w-2/3 shimmer rounded-lg opacity-10"></div>
-            </div>
-          </div>
-
-        </div>
-
-        <div class="mt-20 flex justify-center items-center gap-4 hidden" id="pagination-controls">
-          <button class="w-10 h-10 flex items-center justify-center text-outline hover:text-primary transition-colors">
-            <span class="material-symbols-outlined">chevron_left</span>
-          </button>
-          <button class="w-10 h-10 flex items-center justify-center bg-primary text-on-primary-fixed font-black rounded-lg">1</button>
-          <button class="w-10 h-10 flex items-center justify-center text-outline hover:text-primary transition-colors">
-            <span class="material-symbols-outlined">chevron_right</span>
-          </button>
+      <div class="space-y-2">
+        <label class="text-[10px] font-bold uppercase tracking-widest text-outline">Search Selection</label>
+        <div class="relative">
+          <span class="material-symbols-outlined absolute left-3 top-2.5 text-outline text-sm">search</span>
+          <input type="text" id="search-input" placeholder="Filter this page..." class="w-full bg-surface-container-lowest border border-white/5 rounded-xl pl-9 pr-4 py-2 text-xs text-on-surface placeholder:text-outline-variant focus:border-primary/40 focus:ring-0 transition-all">
         </div>
       </div>
+
+      <div class="space-y-2">
+        <label class="text-[10px] font-bold uppercase tracking-widest text-outline">Sort Matrix</label>
+        <select id="sort-select" class="w-full bg-surface-container-lowest border border-white/5 rounded-xl px-3 py-2 text-xs text-on-surface focus:border-primary/40 focus:ring-0 transition-all">
+          <option value="latest">Latest Arrivals</option>
+          <option value="price-low">Price: Low to High</option>
+          <option value="price-high">Price: High to Low</option>
+        </select>
+      </div>
+
+      <div class="space-y-3 pt-2">
+        <label class="text-[10px] font-bold uppercase tracking-widest text-outline block">Core Inventory</label>
+        <div id="category-filters-container" class="space-y-1">
+          <div class="text-xs text-outline-variant italic">Loading categories...</div>
+        </div>
+      </div>
+
+      <div id="dynamic-spec-filters" class="space-y-5 pt-4 border-t border-white/5">
+        </div>
+    </aside>
+
+    <div class="lg:col-span-3 flex flex-col justify-between space-y-12">
+      <div id="products-grid" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+        <div class="bg-surface-container-low rounded-xl overflow-hidden dynamic-shimmer-placeholder">
+          <div class="aspect-[4/5] shimmer opacity-20"></div>
+          <div class="p-6 space-y-4">
+            <div class="flex justify-between"><div class="h-6 w-32 shimmer rounded-lg opacity-20"></div><div class="h-6 w-16 shimmer rounded-lg opacity-20"></div></div>
+            <div class="h-4 w-full shimmer rounded-lg opacity-10"></div>
+            <div class="h-4 w-2/3 shimmer rounded-lg opacity-10"></div>
+          </div>
+        </div>
+      </div>
+
+      <div id="pagination-controls" class="flex items-center justify-center gap-2 pt-6 border-t border-white/5 hidden"></div>
     </div>
   </main>
 
@@ -225,14 +125,11 @@
       </h2>
       <button id="close-cart" class="text-slate-400 hover:text-white text-3xl font-light">&times;</button>
     </div>
-    
     <div id="cart-items" class="flex-1 overflow-y-auto space-y-4 pr-1"></div>
-    
     <div id="cart-empty" class="text-center py-12 text-slate-500 hidden">
       <span class="material-symbols-outlined text-5xl block mb-2">production_quantity_limits</span>
       Your cart is empty
     </div>
-
     <div class="pt-4 border-t border-white/5 mt-4 space-y-4">
       <div class="flex justify-between items-center text-lg">
         <span class="text-slate-400">Estimated Total:</span>
@@ -244,29 +141,19 @@
     </div>
   </div>
 
-  <footer class="bg-slate-950 w-full py-12 px-8 mt-24 border-t border-white/5 mb-16 md:mb-0">
+  <footer class="bg-slate-950 w-full py-12 px-8 mt-12 border-t border-white/5 mb-16 md:mb-0">
     <div class="max-w-screen-2xl mx-auto flex flex-col md:flex-row justify-between items-center gap-8">
-      <div class="font-['Space_Grotesk'] text-lg font-bold text-slate-200 tracking-wider">
-        THE GEEK SHOP
-      </div>
+      <div class="font-['Space_Grotesk'] text-lg font-bold text-slate-200 tracking-wider">THE GEEK SHOP</div>
       <div class="flex gap-6 items-center">
-        <a href="https://www.facebook.com/thegeek.shop0" target="_blank" class="opacity-70 hover:opacity-100 transition-opacity">
-          <img src="facebook.png" alt="Facebook" class="w-7 h-7">
-        </a>
-        <a href="https://www.instagram.com/thegeek.shop0" target="_blank" class="opacity-70 hover:opacity-100 transition-opacity">
-          <img src="instagram.png" alt="Instagram" class="w-7 h-7">
-        </a>
-        <a href="https://wa.me/01960902526" target="_blank" class="opacity-70 hover:opacity-100 transition-opacity">
-          <img src="whatsapp.png" alt="WhatsApp" class="w-7 h-7">
-        </a>
+        <a href="https://www.facebook.com/thegeek.shop0" target="_blank" class="opacity-70 hover:opacity-100 transition-opacity"><img src="facebook.png" alt="Facebook" class="w-7 h-7" onerror="this.style.display='none'"></a>
+        <a href="https://www.instagram.com/thegeek.shop0" target="_blank" class="opacity-70 hover:opacity-100 transition-opacity"><img src="instagram.png" alt="Instagram" class="w-7 h-7" onerror="this.style.display='none'"></a>
+        <a href="https://wa.me/01960902526" target="_blank" class="opacity-70 hover:opacity-100 transition-opacity"><img src="whatsapp.png" alt="WhatsApp" class="w-7 h-7" onerror="this.style.display='none'"></a>
       </div>
-      <div class="font-['Inter'] text-[11px] tracking-widest text-slate-500 uppercase text-center md:text-right">
-        © All rights reserved by The Geek Shop
-      </div>
+      <div class="font-['Inter'] text-[11px] tracking-widest text-slate-500 uppercase text-center md:text-right">© All rights reserved by The Geek Shop</div>
     </div>
   </footer>
 
-  <nav class="fixed bottom-0 left-0 w-full flex justify-around items-center px-2 py-3 md:hidden bg-[#0c1322]/80 backdrop-blur-lg border-t border-white/5 z-[70]">
+  <nav class="fixed bottom-0 left-0 w-full flex justify-around items-center px-2 py-3 md:hidden bg-[#0c1322]/90 backdrop-blur-lg border-t border-white/5 z-[70]">
     <a class="flex flex-col items-center justify-center text-slate-400 hover:text-slate-200 transition-colors" href="index.html">
       <span class="material-symbols-outlined">home</span>
       <span class="text-[9px] font-bold uppercase tracking-tighter mt-0.5">Home</span>
@@ -285,5 +172,6 @@
     </a>
   </nav>
 
+  <script type="module" src="script.js"></script>
 </body>
 </html>
