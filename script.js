@@ -26,6 +26,56 @@ function getCart() {
   return cart ? JSON.parse(cart) : [];
 }
 
+// HIGH-FIDELITY PARSER FOR STRINGS
+function parseSpecsData(specData) {
+  if (!specData) return {};
+  if (typeof specData === 'object') return specData; 
+  
+  if (typeof specData === 'string') {
+    const specsObj = {};
+    
+    // Dictionary of standard hardware specs to isolate values perfectly
+    const knownKeys = [
+      "Material", "Legend", "Printing Process", "Key Count", "Profile", "Layout", 
+      "Shine-Through", "Switch Type", "Switches", "Brand", "Model", "Connectivity", 
+      "Backlight", "Battery Capacity", "Battery", "Interface", "Weight", "Size", 
+      "Features", "Type", "Polling Rate", "Lifespan", "Hotswap", "Hot-swappable", "Color"
+    ];
+    
+    // Escape keys safely for regex generation
+    const escapedKeys = knownKeys.map(k => k.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')).join('|');
+    const regex = new RegExp(`\\b(${escapedKeys}):\\s*(.*?)(?=\\s*\\b(?:${escapedKeys}):|$)`, 'gi');
+    
+    let match;
+    let foundAny = false;
+    
+    while ((match = regex.exec(specData)) !== null) {
+      foundAny = true;
+      const rawKey = match[1].trim();
+      const value = match[2].trim();
+      
+      // Keep original casing from our known list
+      const actualKey = knownKeys.find(k => k.toLowerCase() === rawKey.toLowerCase()) || rawKey;
+      if (actualKey && value) {
+        specsObj[actualKey] = value;
+      }
+    }
+    
+    // Fallback logic in case you type a completely custom unique spec key in your database
+    if (!foundAny) {
+      const fallbackRegex = /([A-Za-z0-9\-\+ ]+?):\s*(.+?)(?=\s+[A-Za-z0-9\-\+ ]+?:|$)/g;
+      while ((match = fallbackRegex.exec(specData)) !== null) {
+        const key = match[1].trim();
+        const value = match[2].trim();
+        if (key && value) specsObj[key] = value;
+      }
+    }
+    
+    return specsObj;
+  }
+  return {};
+}
+
 function saveCart(cart) {
   localStorage.setItem('cart', JSON.stringify(cart));
   updateCartUI();
@@ -121,7 +171,6 @@ function updateCartUI() {
   if (totalEl) totalEl.innerHTML = `<strong>Total: ৳${total}</strong>`;
 }
 
-// ====== GLOBAL UTILS ======
 const productsMap = new Map();
 
 async function loadProducts() {
@@ -148,27 +197,6 @@ function calculateDeliveryFee(address) {
   return 150;
 }
 
-// NEW STRING PARSER: Converts "Material: PBT Key Count: 128" -> { Material: "PBT", "Key Count": "128" }
-function parseSpecsData(specData) {
-  if (!specData) return {};
-  if (typeof specData === 'object') return specData; // Failsafe if data is already JSON
-  
-  if (typeof specData === 'string') {
-    const specsObj = {};
-    // Regex identifies [Key Text]: [Value Text] looking ahead to the next colon or string end
-    const regex = /([A-Za-z0-9\-\+ ]+?):\s*(.+?)(?=\s+[A-Za-z0-9\-\+ ]+?:|$)/g;
-    let match;
-    while ((match = regex.exec(specData)) !== null) {
-      const key = match[1].trim();
-      const value = match[2].trim();
-      if (key && value) specsObj[key] = value;
-    }
-    return specsObj;
-  }
-  return {};
-}
-
-// ====== TAILWIND PRODUCT CARD GENERATOR ======
 function createProductCard(p, products) {
   const isUpcoming = p.availability === 'Upcoming';
   const isOOS = !isUpcoming && Number(p.stock) <= 0 && p.availability !== 'Pre Order';
@@ -219,49 +247,7 @@ function createProductCard(p, products) {
   return card;
 }
 
-// ====== PAGE ROUTERS ======
-
-// 1. HOME PAGE LOGIC
-async function initHomePage() {
-  const productsContainer = document.getElementById('interest-products');
-  const products = await loadProducts();
-  if (products.length === 0) return;
-
-  const heroSection = document.getElementById('hero-section');
-  if (heroSection) {
-      const randomProduct = products[Math.floor(Math.random() * products.length)];
-      const titleParts = randomProduct.name.split(' ');
-      const p1 = titleParts.slice(0, 2).join(' ');
-      const p2 = titleParts.slice(2).join(' ') || 'EDITION';
-
-      if(document.getElementById('hero-tag')) document.getElementById('hero-tag').textContent = `Featured ${randomProduct.category || 'Gear'}`;
-      if(document.getElementById('hero-title')) {
-        document.getElementById('hero-title').innerHTML = `${p1} <br/><span class="text-transparent bg-clip-text bg-gradient-to-br from-primary to-primary-container">${p2}</span>`;
-        document.getElementById('hero-title').classList.remove('shimmer', 'text-transparent');
-      }
-      if(document.getElementById('hero-desc')) document.getElementById('hero-desc').textContent = randomProduct.description || "Experience premium mechanical artistry.";
-      
-      const imgEl = document.getElementById('hero-img');
-      if(imgEl && randomProduct.images && randomProduct.images[0]) {
-        imgEl.src = randomProduct.images[0];
-        imgEl.classList.remove('shimmer');
-      }
-      
-      const sameName = products.filter(other => other.name.toLowerCase() === randomProduct.name.toLowerCase());
-      let slug = randomProduct.name.toLowerCase().replace(/\s+/g, '-');
-      if (sameName.length > 1 && randomProduct.color) slug += '-' + randomProduct.color.toLowerCase().replace(/\s+/g, '-');
-      
-      if(document.getElementById('hero-link')) document.getElementById('hero-link').href = `product.html?slug=${slug}`;
-      heroSection.classList.remove('opacity-0');
-  }
-
-  if (productsContainer) {
-    productsContainer.innerHTML = ''; 
-    shuffle(products).slice(0, 8).forEach(p => productsContainer.appendChild(createProductCard(p, products)));
-  }
-}
-
-// 2. PRODUCTS PAGE LOGIC
+// ====== PRODUCTS FILTER PAGE ======
 async function initProductsPage() {
   const container = document.getElementById('products-grid');
   const paginationContainer = document.getElementById('pagination-controls');
@@ -294,7 +280,6 @@ async function initProductsPage() {
     if (!dynamicSpecContainer) return;
     const specMap = {}; 
     products.forEach(p => {
-      // UTILIZE THE PARSER HERE
       const parsedSpecs = parseSpecsData(p.specs);
       if (Object.keys(parsedSpecs).length > 0) {
         Object.entries(parsedSpecs).forEach(([key, val]) => {
@@ -319,9 +304,11 @@ async function initProductsPage() {
           </label>
         `;
       }).join('');
+      
+      const readableTitle = specName.includes(' ') ? specName : specName.replace(/([A-Z])/g, ' $1').trim();
       return `
         <div class="space-y-2">
-          <label class="text-[10px] font-bold uppercase tracking-widest text-outline block capitalize">${specName.replace(/([A-Z])/g, ' $1').trim()}</label>
+          <label class="text-[10px] font-bold uppercase tracking-widest text-outline block capitalize">${readableTitle}</label>
           <div class="space-y-1 max-h-40 overflow-y-auto pr-1">${optionsHTML}</div>
         </div>
       `;
@@ -368,7 +355,6 @@ async function initProductsPage() {
     Object.entries(selectedSpecs).forEach(([specKey, allowedValues]) => {
       if (allowedValues.length > 0) {
         result = result.filter(p => {
-          // UTILIZE THE PARSER HERE FOR FILTER VALIDATION
           const parsedSpecs = parseSpecsData(p.specs);
           return parsedSpecs[specKey] && allowedValues.includes(parsedSpecs[specKey].toString().trim());
         });
@@ -453,7 +439,7 @@ async function initProductsPage() {
   renderGrid();
 }
 
-// 3. PRODUCT DETAILS PAGE LOGIC
+// ====== PRODUCT DETAILS PAGE ======
 async function initProductPage() {
   const params = new URLSearchParams(window.location.search);
   const urlSlug = params.get('slug');
@@ -544,34 +530,28 @@ async function initProductPage() {
     document.getElementById('product-detailed-desc').innerHTML = product.detailedDescription || product.description || '<p>No detailed background information available.</p>';
   }
 
-  // Right Section: Specification Grid Assembly using the String Parser
+  // Right Section: Specification Table Engine
   const specsGrid = document.getElementById('product-specs-grid');
   if (specsGrid) {
     specsGrid.innerHTML = '';
-    
-    // UTILIZE THE PARSER HERE
     const parsedSpecs = parseSpecsData(product.specs);
     
     if (Object.keys(parsedSpecs).length > 0) {
       Object.entries(parsedSpecs).forEach(([key, value]) => {
         if (key.toLowerCase() !== 'id') {
+          const printableKey = key.includes(' ') ? key : key.replace(/([A-Z])/g, ' $1').trim();
           specsGrid.innerHTML += `
             <div class="flex justify-between items-end pb-4 border-b border-outline-variant/10 last:border-0 last:pb-0 pt-4 first:pt-0">
-              <span class="text-slate-400 font-medium capitalize">${key.replace(/([A-Z])/g, ' $1').trim()}</span>
+              <span class="text-slate-400 font-medium capitalize">${printableKey}</span>
               <span class="font-display text-xl text-right">${value}</span>
             </div>`;
         }
       });
     } else {
-      // Fallback
       specsGrid.innerHTML = `
         <div class="flex justify-between items-end pb-4 border-b border-outline-variant/10">
           <span class="text-slate-400 font-medium">Category</span>
           <span class="font-display text-xl text-right">${product.category || 'N/A'}</span>
-        </div>
-        <div class="flex justify-between items-end pb-4 border-b border-outline-variant/10 pt-4">
-          <span class="text-slate-400 font-medium">Color Variation</span>
-          <span class="font-display text-xl text-right">${product.color || 'Standard'}</span>
         </div>
       `;
     }
@@ -585,7 +565,46 @@ async function initProductPage() {
   }
 }
 
-// 4. STANDALONE CHECKOUT PAGE LOGIC 
+// ====== HOME & CHECKOUT PAGE INITIALIZERS ======
+async function initHomePage() {
+  const productsContainer = document.getElementById('interest-products');
+  const products = await loadProducts();
+  if (products.length === 0) return;
+
+  const heroSection = document.getElementById('hero-section');
+  if (heroSection) {
+      const randomProduct = products[Math.floor(Math.random() * products.length)];
+      const titleParts = randomProduct.name.split(' ');
+      const p1 = titleParts.slice(0, 2).join(' ');
+      const p2 = titleParts.slice(2).join(' ') || 'EDITION';
+
+      if(document.getElementById('hero-tag')) document.getElementById('hero-tag').textContent = `Featured ${randomProduct.category || 'Gear'}`;
+      if(document.getElementById('hero-title')) {
+        document.getElementById('hero-title').innerHTML = `${p1} <br/><span class="text-transparent bg-clip-text bg-gradient-to-br from-primary to-primary-container">${p2}</span>`;
+        document.getElementById('hero-title').classList.remove('shimmer', 'text-transparent');
+      }
+      if(document.getElementById('hero-desc')) document.getElementById('hero-desc').textContent = randomProduct.description || "Experience premium mechanical artistry.";
+      
+      const imgEl = document.getElementById('hero-img');
+      if(imgEl && randomProduct.images && randomProduct.images[0]) {
+        imgEl.src = randomProduct.images[0];
+        imgEl.classList.remove('shimmer');
+      }
+      
+      const sameName = products.filter(other => other.name.toLowerCase() === randomProduct.name.toLowerCase());
+      let slug = randomProduct.name.toLowerCase().replace(/\s+/g, '-');
+      if (sameName.length > 1 && randomProduct.color) slug += '-' + randomProduct.color.toLowerCase().replace(/\s+/g, '-');
+      
+      if(document.getElementById('hero-link')) document.getElementById('hero-link').href = `product.html?slug=${slug}`;
+      heroSection.classList.remove('opacity-0');
+  }
+
+  if (productsContainer) {
+    productsContainer.innerHTML = ''; 
+    shuffle(products).slice(0, 8).forEach(p => productsContainer.appendChild(createProductCard(p, products)));
+  }
+}
+
 async function initCheckoutPage() {
   const urlParams = new URLSearchParams(window.location.search);
   const singleProductId = urlParams.get('id');
@@ -596,11 +615,7 @@ async function initCheckoutPage() {
 
   if (singleProductId) {
     const p = products.find(x => x.id === singleProductId);
-    if (!p) {
-      alert('Product not found.');
-      window.location.href = 'index.html';
-      return;
-    }
+    if (!p) { alert('Product not found.'); window.location.href = 'index.html'; return; }
     const unitPrice = Number(p.price) - Number(p.discount || 0);
     checkoutItems.push({ id: p.id, name: p.name, color: p.color || '', price: unitPrice, image: p.images?.[0] || 'logo.png', qty: 1, isPreOrder: p.availability === 'Pre Order' });
     if (p.availability === 'Pre Order') hasPreOrder = true;
@@ -763,7 +778,6 @@ function showOrderConfirmation(orderId) {
 document.addEventListener('DOMContentLoaded', async () => {
   updateCartUI();
 
-  // Navigation UI Linkers
   document.getElementById('cart-link')?.addEventListener('click', () => {
     const slider = document.getElementById('cart-slider');
     if (slider) { slider.classList.remove('hidden'); slider.classList.remove('translate-x-full'); }
@@ -783,7 +797,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('image-viewer')?.classList.add('hidden');
   });
 
-  // Routing Execution Nodes 
   const isHome = !!document.getElementById('interest-products');
   const isProducts = !!document.getElementById('products-grid');
   const isProduct = !!document.getElementById('product-section');
