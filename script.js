@@ -26,25 +26,47 @@ function getCart() {
   return cart ? JSON.parse(cart) : [];
 }
 
-// ====== BULLETPROOF SPECIFICATION PARSER ======
+// ====== ULTIMATE SPECIFICATION PARSER ======
 function parseSpecsData(specData) {
   if (!specData) return {};
   if (typeof specData === 'object') return specData; 
   
   if (typeof specData === 'string') {
-    if (specData.trim().startsWith('{')) {
-      try { return JSON.parse(specData); } catch(e) {}
+    let str = specData.trim();
+    
+    // Check if it's already JSON
+    if (str.startsWith('{')) {
+      try { return JSON.parse(str); } catch(e) {}
     }
     
-    // If it's a plain string with no colons, just return it as a description
-    if (!specData.includes(':')) {
-      return { "Details": specData.trim() };
+    // Check if it even has colons
+    if (!str.includes(':')) {
+      return { "Details": str };
     }
 
-    const parts = specData.split(':');
     const specsObj = {};
 
-    // Extensive dictionary of expected keyboard keys
+    // FORMAT 2: MULTI-LINE STRING (Easiest to parse)
+    if (str.includes('\n')) {
+      const lines = str.split('\n');
+      lines.forEach(line => {
+        if (line.includes(':')) {
+          const [k, ...v] = line.split(':');
+          const key = k.trim().replace(/[^a-zA-Z0-9\- ]/g, ''); // Clean odd characters
+          let val = v.join(':').trim();
+          val = val.replace(/\?$/, '').trim(); // Remove trailing typos like ?
+          
+          if (key && val) {
+            // Capitalize properly
+            const properKey = key.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+            specsObj[properKey] = val;
+          }
+        }
+      });
+      return specsObj;
+    }
+
+    // FORMAT 1: SINGLE CONTINUOUS LINE STRING
     const knownKeys = [
       "Material", "Legend", "Printing Process", "Key Count", "Profile", "Layout", 
       "Shine-Through", "Switch Type", "Switches", "Brand", "Model", "Connectivity", 
@@ -55,59 +77,54 @@ function parseSpecsData(specData) {
       "Software", "Warranty", "Lighting", "Actuation Force", "Bottom Out"
     ];
     
-    // Sort keys descending by length so multi-word matches take absolute priority
+    // Sort descending by length so "Printing Process" matches before "Printing"
     knownKeys.sort((a, b) => b.length - a.length);
 
-    // The very first item before the first colon is always our initial spec name
-    let currentKey = parts[0].trim();
-    // Standardize the first key's capitalization
-    currentKey = currentKey.charAt(0).toUpperCase() + currentKey.slice(1);
+    // Escape keys for Regex and find all exact positions of "[Key]:"
+    const escapedKeys = knownKeys.map(k => k.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')).join('|');
+    const keyRegex = new RegExp(`\\b(${escapedKeys})\\s*:`, 'gi');
+    
+    let matches = [];
+    let match;
+    while ((match = keyRegex.exec(str)) !== null) {
+      matches.push({
+        key: match[1].trim(),
+        index: match.index,
+        end: match.index + match[0].length // where the value starts
+      });
+    }
 
-    for (let i = 1; i < parts.length; i++) {
-      let segment = parts[i];
-      
-      // If it is the last chunk, the entire rest of the string is the final value
-      if (i === parts.length - 1) {
-        specsObj[currentKey] = segment.trim();
+    // If we found recognized keys, extract the text between them
+    if (matches.length > 0) {
+      for (let i = 0; i < matches.length; i++) {
+        const currentMatch = matches[i];
+        const nextMatch = matches[i + 1];
+        
+        const valueStartIndex = currentMatch.end;
+        const valueEndIndex = nextMatch ? nextMatch.index : str.length;
+        
+        let value = str.substring(valueStartIndex, valueEndIndex).trim();
+        value = value.replace(/\?$/, '').trim(); // Clean trailing typos
+        
+        const properKey = currentMatch.key.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+        if (value) specsObj[properKey] = value;
+      }
+      return specsObj;
+    }
+
+    // FALLBACK: If string is single-line but uses custom keys not in our list
+    const fallbackParts = str.split(':');
+    let currentKey = fallbackParts[0].split(' ').pop().trim();
+    
+    for (let i = 1; i < fallbackParts.length; i++) {
+      let seg = fallbackParts[i].trim();
+      if (i === fallbackParts.length - 1) {
+        specsObj[currentKey.charAt(0).toUpperCase() + currentKey.slice(1)] = seg;
       } else {
-        // Strip trailing spaces that would break the matching algorithm
-        segment = segment.replace(/\s+$/, '');
-        let nextKey = "";
-        let value = "";
-        let foundKnownKey = false;
-        
-        for (const knownKey of knownKeys) {
-          // Escape key for regex to prevent issues with hyphens (e.g., "Shine-Through")
-          const escapedKey = knownKey.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
-          // Look backward from the end of the segment to find where the next spec name starts
-          // \b or \s ensures we don't accidentally split a word like "Prototype" finding "Type"
-          const regex = new RegExp(`(?:\\b|\\s+)(${escapedKey})$`, 'i');
-          const match = segment.match(regex);
-          
-          if (match) {
-            nextKey = match[1].trim();
-            value = segment.substring(0, match.index).trim();
-            foundKnownKey = true;
-            break;
-          }
-        }
-        
-        // Fallback safety if a completely unique custom key is ever written in the database
-        if (!foundKnownKey) {
-          const words = segment.trim().split(/\s+/);
-          if (words.length > 0) {
-            nextKey = words.pop();
-            value = words.join(' ').trim();
-          }
-        }
-
-        // Map the parsed pair cleanly
-        specsObj[currentKey] = value;
-        
-        // Format the next key nicely (Title Case) for the UI display on the next loop
-        currentKey = nextKey.split(' ')
-          .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
-          .join(' ');
+        let words = seg.split(/\s+/);
+        let nextKey = words.pop();
+        specsObj[currentKey.charAt(0).toUpperCase() + currentKey.slice(1)] = words.join(' ').trim();
+        currentKey = nextKey;
       }
     }
     return specsObj;
@@ -320,7 +337,7 @@ async function initProductsPage() {
     const specMap = {}; 
     products.forEach(p => {
       const parsedSpecs = parseSpecsData(p.specs);
-      if (Object.keys(parsedSpecs).length > 0) {
+      if (Object.keys(parsedSpecs).length > 0 && !parsedSpecs["Details"]) {
         Object.entries(parsedSpecs).forEach(([key, val]) => {
           if (key && val && key.toLowerCase() !== 'id') {
             const formattedKey = key.trim();
@@ -344,10 +361,9 @@ async function initProductsPage() {
         `;
       }).join('');
       
-      const readableTitle = specName.includes(' ') ? specName : specName.replace(/([A-Z])/g, ' $1').trim();
       return `
         <div class="space-y-2">
-          <label class="text-[10px] font-bold uppercase tracking-widest text-outline block capitalize">${readableTitle}</label>
+          <label class="text-[10px] font-bold uppercase tracking-widest text-outline block capitalize">${specName}</label>
           <div class="space-y-1 max-h-40 overflow-y-auto pr-1">${optionsHTML}</div>
         </div>
       `;
@@ -569,24 +585,28 @@ async function initProductPage() {
     document.getElementById('product-detailed-desc').innerHTML = product.detailedDescription || product.description || '<p>No detailed background information available.</p>';
   }
 
-  // Right Section: Clean UI Specification Table Fix
+  // Right Section: Clean UI Specification Table Engine
   const specsGrid = document.getElementById('product-specs-grid');
   if (specsGrid) {
     specsGrid.innerHTML = '';
     const parsedSpecs = parseSpecsData(product.specs);
     
-    if (Object.keys(parsedSpecs).length > 0) {
+    // Check if the parser gave us detailed keys or just a general block of text
+    if (Object.keys(parsedSpecs).length > 0 && !parsedSpecs["Details"]) {
       Object.entries(parsedSpecs).forEach(([key, value]) => {
         if (key.toLowerCase() !== 'id' && value.trim() !== '') {
-          // Changed layout structure here to safely wrap long text like "Five-Sided Dye Sublimation"
           specsGrid.innerHTML += `
-            <div class="flex justify-between items-center py-3 border-b border-white/5 last:border-0 gap-4">
+            <div class="flex flex-col sm:flex-row sm:justify-between items-start sm:items-center py-4 border-b border-white/5 last:border-0 gap-2 sm:gap-4">
               <span class="text-slate-400 font-medium whitespace-nowrap">${key}</span>
-              <span class="font-display font-medium text-right text-slate-200">${value}</span>
+              <span class="font-display font-medium text-left sm:text-right text-slate-200">${value}</span>
             </div>`;
         }
       });
+    } else if (parsedSpecs["Details"]) {
+      // If it couldn't parse the format properly, print the entire block safely
+      specsGrid.innerHTML = `<div class="text-slate-300 text-sm leading-relaxed">${parsedSpecs["Details"]}</div>`;
     } else {
+      // Absolute Fallback
       specsGrid.innerHTML = `
         <div class="flex justify-between items-center py-3 border-b border-white/5">
           <span class="text-slate-400 font-medium">Category</span>
