@@ -3,10 +3,22 @@ import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from
 import { getFirestore, collection, getDocs, addDoc, doc, updateDoc, deleteDoc, getDoc, orderBy, query, where, runTransaction } from 'https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js';
 import { firebaseConfig, BKASH_NUMBER, COD_NUMBER, DELIVERY_FEE } from './config.js';
 
-// Initialize Firebase
+// ====== INITIALIZE FIREBASE ======
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
+
+// ====== GLOBAL EVENT: CROSS-PAGE SEARCH NAV ======
+document.addEventListener('DOMContentLoaded', () => {
+  const globalSearchInput = document.getElementById('global-search-input');
+  if (globalSearchInput) {
+    globalSearchInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter' && globalSearchInput.value.trim() !== '') {
+        window.location.href = `products.html?search=${encodeURIComponent(globalSearchInput.value.trim())}`;
+      }
+    });
+  }
+});
 
 // ====== CART SYSTEM ======
 function getCart() {
@@ -31,21 +43,13 @@ window.addToCart = function(productId, qty = 1) {
 
   let cart = getCart();
   const existing = cart.find(item => item.id === productId);
-
-  const finalPrice = Number(product.discount) > 0 
-    ? (Number(product.price) - Number(product.discount)) 
-    : Number(product.price);
+  const finalPrice = Number(product.discount) > 0 ? (Number(product.price) - Number(product.discount)) : Number(product.price);
 
   if (existing) {
     existing.qty += qty;
   } else {
     cart.push({
-      id: productId,
-      name: product.name,
-      color: product.color || '',
-      price: finalPrice,
-      image: product.images?.[0] || 'logo.png',
-      qty: qty
+      id: productId, name: product.name, color: product.color || '', price: finalPrice, image: product.images?.[0] || 'logo.png', qty: qty
     });
   }
   saveCart(cart);
@@ -58,10 +62,7 @@ function removeFromCart(productId) {
 }
 
 function updateCartQuantity(productId, newQty) {
-  if (newQty < 1) {
-    removeFromCart(productId);
-    return;
-  }
+  if (newQty < 1) { removeFromCart(productId); return; }
   let cart = getCart();
   const item = cart.find(i => i.id === productId);
   if (item) item.qty = newQty;
@@ -93,7 +94,6 @@ function updateCartUI() {
   cart.forEach(item => {
     const itemTotal = item.price * item.qty;
     total += itemTotal;
-
     const div = document.createElement('div');
     div.className = 'flex items-center gap-4 bg-surface-container-low p-3 rounded-xl border border-white/5';
     div.innerHTML = `
@@ -108,23 +108,13 @@ function updateCartUI() {
             <span class="qty-display text-xs font-bold w-4 text-center">${item.qty}</span>
             <button class="qty-plus px-2 py-1 hover:text-white text-slate-400 transition-colors">+</button>
           </div>
-          <button class="remove-btn text-xs text-red-400 hover:text-red-300 transition-colors underline">Remove</button>
+          <button class="remove-btn text-xs text-red-400 hover:text-red-300 underline">Remove</button>
         </div>
       </div>
     `;
-
-    div.querySelector('.qty-minus').addEventListener('click', () => {
-      updateCartQuantity(item.id, item.qty - 1);
-      div.querySelector('.qty-display').textContent = Math.max(1, item.qty - 1);
-    });
-    div.querySelector('.qty-plus').addEventListener('click', () => {
-      updateCartQuantity(item.id, item.qty + 1);
-      div.querySelector('.qty-display').textContent = item.qty + 1;
-    });
-    div.querySelector('.remove-btn').addEventListener('click', () => {
-      removeFromCart(item.id);
-    });
-
+    div.querySelector('.qty-minus').addEventListener('click', () => updateCartQuantity(item.id, item.qty - 1));
+    div.querySelector('.qty-plus').addEventListener('click', () => updateCartQuantity(item.id, item.qty + 1));
+    div.querySelector('.remove-btn').addEventListener('click', () => removeFromCart(item.id));
     itemsContainer.appendChild(div);
   });
 
@@ -186,9 +176,7 @@ function createProductCard(p, products) {
   card.innerHTML = `
     <div class="aspect-[4/5] bg-surface-container-lowest relative overflow-hidden cursor-pointer flex-shrink-0" onclick="window.location.href='product.html?slug=${slug}'">
       <img class="w-full h-full object-cover grayscale group-hover:grayscale-0 transition-all duration-700 scale-105 group-hover:scale-100" src="${images[0] || 'logo.png'}" alt="${p.name}">
-      <div class="absolute top-4 left-4 right-4 flex flex-wrap z-10">
-        ${badgeHTML}
-      </div>
+      <div class="absolute top-4 left-4 right-4 flex flex-wrap z-10">${badgeHTML}</div>
       ${!isOOS && !isUpcoming ? `
       <button class="absolute bottom-4 right-4 w-12 h-12 bg-surface-bright/80 backdrop-blur-md rounded-full flex items-center justify-center text-primary opacity-0 group-hover:opacity-100 transition-all duration-300 translate-y-4 group-hover:translate-y-0 shadow-2xl z-20" data-id="${p.id}" onclick="event.stopPropagation(); window.addToCart('${p.id}'); alert('Added to cart!');">
         <span class="material-symbols-outlined pointer-events-none">add_shopping_cart</span>
@@ -217,10 +205,8 @@ function createProductCard(p, products) {
 async function initHomePage() {
   const productsContainer = document.getElementById('interest-products');
   const products = await loadProducts();
-  
   if (products.length === 0) return;
 
-  // Random Hero Generator (Safely updating the DOM and removing shimmer)
   const heroSection = document.getElementById('hero-section');
   if (heroSection) {
       const randomProduct = products[Math.floor(Math.random() * products.length)];
@@ -228,46 +214,37 @@ async function initHomePage() {
       const p1 = titleParts.slice(0, 2).join(' ');
       const p2 = titleParts.slice(2).join(' ') || 'EDITION';
 
-      const tagEl = document.getElementById('hero-tag');
-      if(tagEl) tagEl.textContent = `Featured ${randomProduct.category || 'Gear'}`;
-      
-      const titleEl = document.getElementById('hero-title');
-      if(titleEl) {
-        titleEl.innerHTML = `${p1} <br/><span class="text-transparent bg-clip-text bg-gradient-to-br from-primary to-primary-container">${p2}</span>`;
-        titleEl.classList.remove('shimmer', 'text-transparent'); // Removes placeholder animation
+      if(document.getElementById('hero-tag')) document.getElementById('hero-tag').textContent = `Featured ${randomProduct.category || 'Gear'}`;
+      if(document.getElementById('hero-title')) {
+        document.getElementById('hero-title').innerHTML = `${p1} <br/><span class="text-transparent bg-clip-text bg-gradient-to-br from-primary to-primary-container">${p2}</span>`;
+        document.getElementById('hero-title').classList.remove('shimmer', 'text-transparent');
       }
-
-      const descEl = document.getElementById('hero-desc');
-      if(descEl) descEl.textContent = randomProduct.description || "Experience premium mechanical artistry. Built for durability, aesthetic precision, and the ultimately satisfying tactile soundscape.";
+      if(document.getElementById('hero-desc')) document.getElementById('hero-desc').textContent = randomProduct.description || "Experience premium mechanical artistry.";
       
       const imgEl = document.getElementById('hero-img');
       if(imgEl && randomProduct.images && randomProduct.images[0]) {
         imgEl.src = randomProduct.images[0];
-        imgEl.classList.remove('shimmer'); // Removes placeholder animation
+        imgEl.classList.remove('shimmer');
       }
       
       const sameName = products.filter(other => other.name.toLowerCase() === randomProduct.name.toLowerCase());
       let slug = randomProduct.name.toLowerCase().replace(/\s+/g, '-');
       if (sameName.length > 1 && randomProduct.color) slug += '-' + randomProduct.color.toLowerCase().replace(/\s+/g, '-');
       
-      const linkEl = document.getElementById('hero-link');
-      if(linkEl) linkEl.href = `product.html?slug=${slug}`;
-      
+      if(document.getElementById('hero-link')) document.getElementById('hero-link').href = `product.html?slug=${slug}`;
       heroSection.classList.remove('opacity-0');
   }
 
-  // Interest Products Generation
   if (productsContainer) {
-    productsContainer.innerHTML = ''; // This clears out the HTML Shimmer Cards
-    shuffle(products).slice(0, 8).forEach(p => {
-      productsContainer.appendChild(createProductCard(p, products));
-    });
+    productsContainer.innerHTML = ''; 
+    shuffle(products).slice(0, 8).forEach(p => productsContainer.appendChild(createProductCard(p, products)));
   }
 }
 
-// 2. PRODUCTS PAGE LOGIC (Updated with advanced filters)
+// 2. PRODUCTS PAGE LOGIC (Pagination & Dynamic Specification Filters)
 async function initProductsPage() {
   const container = document.getElementById('products-grid');
+  const paginationContainer = document.getElementById('pagination-controls');
   if (!container) return;
 
   const products = await loadProducts();
@@ -275,110 +252,219 @@ async function initProductsPage() {
   const searchInput = document.getElementById('search-input');
   const sortSelect = document.getElementById('sort-select');
   const categoryContainer = document.getElementById('category-filters-container');
+  const dynamicSpecContainer = document.getElementById('dynamic-spec-filters');
+  const clearFiltersBtn = document.getElementById('clear-filters-btn');
 
-  // Extract unique categories and populate sidebar
+  // Pagination & Filter States
+  let currentPage = 1;
+  const itemsPerPage = 21;
+  let selectedSpecs = {};
+
+  // Extract Category Map
   const categories = ['All', ...new Set(products.map(p => p.category).filter(Boolean))];
   
   if (categoryContainer) {
     categoryContainer.innerHTML = categories.map(cat => `
-      <label class="flex items-center gap-3 cursor-pointer group mb-2">
-        <input type="radio" name="cat-filter" value="${cat}" ${cat === 'All' ? 'checked' : ''} class="w-4 h-4 bg-surface-container-lowest border-white/10 text-primary focus:ring-primary focus:ring-offset-surface">
-        <span class="text-sm text-outline-variant group-hover:text-on-surface transition-colors">${cat}</span>
+      <label class="flex items-center gap-3 cursor-pointer group py-1.5 px-2 rounded-xl hover:bg-surface-variant/30 transition-colors">
+        <input type="radio" name="cat-filter" value="${cat}" ${cat === 'All' ? 'checked' : ''} class="w-3.5 h-3.5 bg-surface-container-lowest border-white/10 text-primary focus:ring-0 focus:ring-offset-0 rounded">
+        <span class="text-xs text-outline-variant group-hover:text-on-surface transition-colors">${cat}</span>
       </label>
     `).join('');
   }
 
-  // Check if routed here with a category URL parameter from the homepage
+  // Build Dynamic Checkbox Spec Filters
+  function buildDynamicSpecFiltersUI() {
+    if (!dynamicSpecContainer) return;
+    const specMap = {}; 
+    products.forEach(p => {
+      if (p.specs && typeof p.specs === 'object') {
+        Object.entries(p.specs).forEach(([key, val]) => {
+          if (key && val && key.toLowerCase() !== 'id') {
+            const formattedKey = key.trim();
+            const formattedVal = val.toString().trim();
+            if (!specMap[formattedKey]) specMap[formattedKey] = new Set();
+            specMap[formattedKey].add(formattedVal);
+          }
+        });
+      }
+    });
+
+    dynamicSpecContainer.innerHTML = Object.entries(specMap).map(([specName, uniqueValues]) => {
+      if (!selectedSpecs[specName]) selectedSpecs[specName] = [];
+      const optionsHTML = Array.from(uniqueValues).map(val => {
+        const isChecked = selectedSpecs[specName].includes(val) ? 'checked' : '';
+        return `
+          <label class="flex items-center gap-3 cursor-pointer group py-1 px-1.5 rounded-lg hover:bg-surface-variant/30 transition-colors">
+            <input type="checkbox" data-spec="${specName}" value="${val}" ${isChecked} class="spec-checkbox w-3.5 h-3.5 bg-surface-container-lowest border-white/10 text-primary focus:ring-0 focus:ring-offset-0 rounded-sm">
+            <span class="text-xs text-outline-variant group-hover:text-on-surface transition-colors">${val}</span>
+          </label>
+        `;
+      }).join('');
+      return `
+        <div class="space-y-2">
+          <label class="text-[10px] font-bold uppercase tracking-widest text-outline block capitalize">${specName.replace(/([A-Z])/g, ' $1').trim()}</label>
+          <div class="space-y-1 max-h-40 overflow-y-auto pr-1">${optionsHTML}</div>
+        </div>
+      `;
+    }).join('');
+
+    document.querySelectorAll('.spec-checkbox').forEach(cb => {
+      cb.addEventListener('change', (e) => {
+        const specName = e.target.getAttribute('data-spec');
+        const value = e.target.value;
+        if (e.target.checked) {
+          if (!selectedSpecs[specName].includes(value)) selectedSpecs[specName].push(value);
+        } else {
+          selectedSpecs[specName] = selectedSpecs[specName].filter(v => v !== value);
+        }
+        currentPage = 1;
+        renderGrid();
+      });
+    });
+  }
+
+  // Extract URL parameters (For handling Global Header Search routing)
   const params = new URLSearchParams(window.location.search);
   const urlCategory = params.get('category');
+  const urlSearch = params.get('search');
+
   if (urlCategory && categoryContainer) {
      const targetRadio = document.querySelector(`input[name="cat-filter"][value="${urlCategory}"]`);
      if (targetRadio) targetRadio.checked = true;
   }
+  if (urlSearch && searchInput) {
+     searchInput.value = urlSearch;
+  }
 
-  // Grid Render Function based on active filters
   function renderGrid() {
     let result = [...products];
     
-    // Apply Search
+    // 1. Text Search
     if (searchInput && searchInput.value) {
       const q = searchInput.value.toLowerCase();
       result = result.filter(p => p.name.toLowerCase().includes(q) || (p.description && p.description.toLowerCase().includes(q)));
     }
 
-    // Apply Category
+    // 2. Category Filter
     const checkedCat = document.querySelector('input[name="cat-filter"]:checked');
     if (checkedCat && checkedCat.value !== 'All') {
       result = result.filter(p => p.category === checkedCat.value);
     }
 
-    // Apply Sort
+    // 3. Dynamic Spec Filters Check
+    Object.entries(selectedSpecs).forEach(([specKey, allowedValues]) => {
+      if (allowedValues.length > 0) {
+        result = result.filter(p => p.specs && p.specs[specKey] && allowedValues.includes(p.specs[specKey].toString().trim()));
+      }
+    });
+
+    // 4. Sort Mechanism
     if (sortSelect) {
       const sortVal = sortSelect.value;
       if (sortVal === 'price-low') {
-        result.sort((a, b) => {
-          const aPrice = Number(a.price) - Number(a.discount || 0);
-          const bPrice = Number(b.price) - Number(b.discount || 0);
-          return aPrice - bPrice;
-        });
+        result.sort((a, b) => (Number(a.price) - Number(a.discount || 0)) - (Number(b.price) - Number(b.discount || 0)));
       } else if (sortVal === 'price-high') {
-        result.sort((a, b) => {
-          const aPrice = Number(a.price) - Number(a.discount || 0);
-          const bPrice = Number(b.price) - Number(b.discount || 0);
-          return bPrice - aPrice;
-        });
+        result.sort((a, b) => (Number(b.price) - Number(b.discount || 0)) - (Number(a.price) - Number(a.discount || 0)));
       }
     }
 
-    // Paint to DOM
+    // 5. Pagination Split (21 items)
+    const totalPages = Math.ceil(result.length / itemsPerPage);
+    if (currentPage > totalPages) currentPage = Math.max(1, totalPages);
+    const paginatedItems = result.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+
+    // Paint Grid
     container.innerHTML = '';
     if (result.length === 0) {
-      container.innerHTML = `<div class="col-span-full text-center py-12 text-outline">No products found matching your criteria.</div>`;
+      container.innerHTML = `<div class="col-span-full text-center py-12 text-outline bg-surface-container-low rounded-xl border border-white/5">No products found matching your criteria.</div>`;
+      if (paginationContainer) paginationContainer.classList.add('hidden');
       return;
     }
 
-    result.forEach(p => {
-      container.appendChild(createProductCard(p, products));
+    paginatedItems.forEach(p => container.appendChild(createProductCard(p, products)));
+    renderPaginationControls(totalPages);
+  }
+
+  function renderPaginationControls(totalPages) {
+    if (!paginationContainer) return;
+    if (totalPages <= 1) {
+      paginationContainer.classList.add('hidden');
+      return;
+    }
+    
+    paginationContainer.classList.remove('hidden');
+    paginationContainer.innerHTML = '';
+
+    const prevBtn = document.createElement('button');
+    prevBtn.className = `w-10 h-10 flex items-center justify-center rounded-lg transition-colors ${currentPage === 1 ? 'text-outline/30 cursor-not-allowed' : 'text-outline hover:text-primary bg-surface-container-low hover:bg-surface-container border border-white/5'}`;
+    prevBtn.innerHTML = `<span class="material-symbols-outlined">chevron_left</span>`;
+    prevBtn.disabled = currentPage === 1;
+    prevBtn.onclick = () => { currentPage--; renderGrid(); window.scrollTo({top: 0, behavior: 'smooth'}); };
+    paginationContainer.appendChild(prevBtn);
+
+    for (let i = 1; i <= totalPages; i++) {
+      const pageBtn = document.createElement('button');
+      pageBtn.className = `w-10 h-10 flex items-center justify-center font-black rounded-lg transition-all ${currentPage === i ? 'bg-primary text-on-primary-fixed shadow-lg shadow-primary/20' : 'text-outline hover:text-primary bg-surface-container-low hover:bg-surface-container border border-white/5'}`;
+      pageBtn.textContent = i;
+      pageBtn.onclick = () => { currentPage = i; renderGrid(); window.scrollTo({top: 0, behavior: 'smooth'}); };
+      paginationContainer.appendChild(pageBtn);
+    }
+
+    const nextBtn = document.createElement('button');
+    nextBtn.className = `w-10 h-10 flex items-center justify-center rounded-lg transition-colors ${currentPage === totalPages ? 'text-outline/30 cursor-not-allowed' : 'text-outline hover:text-primary bg-surface-container-low hover:bg-surface-container border border-white/5'}`;
+    nextBtn.innerHTML = `<span class="material-symbols-outlined">chevron_right</span>`;
+    nextBtn.disabled = currentPage === totalPages;
+    nextBtn.onclick = () => { currentPage++; renderGrid(); window.scrollTo({top: 0, behavior: 'smooth'}); };
+    paginationContainer.appendChild(nextBtn);
+  }
+
+  if (clearFiltersBtn) {
+    clearFiltersBtn.addEventListener('click', () => {
+      if (searchInput) searchInput.value = '';
+      if (sortSelect) sortSelect.value = 'latest';
+      const rootRadio = document.querySelector('input[name="cat-filter"][value="All"]');
+      if (rootRadio) rootRadio.checked = true;
+      selectedSpecs = {};
+      currentPage = 1;
+      buildDynamicSpecFiltersUI();
+      renderGrid();
     });
   }
 
-  // Bind Event Listeners
-  if (searchInput) searchInput.addEventListener('input', renderGrid);
-  if (sortSelect) sortSelect.addEventListener('change', renderGrid);
-  if (categoryContainer) categoryContainer.addEventListener('change', renderGrid);
+  if (searchInput) searchInput.addEventListener('input', () => { currentPage = 1; renderGrid(); });
+  if (sortSelect) sortSelect.addEventListener('change', () => { currentPage = 1; renderGrid(); });
+  if (categoryContainer) categoryContainer.addEventListener('change', () => { currentPage = 1; renderGrid(); });
 
-  // Initial Paint
+  buildDynamicSpecFiltersUI();
   renderGrid();
 }
 
-// 3. PRODUCT DETAILS PAGE LOGIC
+// 3. PRODUCT DETAILS PAGE LOGIC (Restructured Mockup Layout)
 async function initProductPage() {
   const params = new URLSearchParams(window.location.search);
   const urlSlug = params.get('slug');
-  if (!urlSlug) return;
+  if (!urlSlug || !document.getElementById('product-section')) return;
 
   const products = await loadProducts();
   let product = null;
 
+  // Retrieve exact product by checking matched slugs identical to catalog generation
   for (const p of products) {
     const sameName = products.filter(other => other.name.toLowerCase() === p.name.toLowerCase());
     let slug = p.name.toLowerCase().replace(/\s+/g, '-');
-    if (sameName.length > 1 && p.color) {
-      slug += '-' + p.color.toLowerCase().replace(/\s+/g, '-');
-    }
-    if (slug === urlSlug) {
-      product = p;
-      break;
-    }
+    if (sameName.length > 1 && p.color) slug += '-' + p.color.toLowerCase().replace(/\s+/g, '-');
+    
+    if (slug === urlSlug) { product = p; break; }
   }
 
   if (!product) {
-    alert('Product not found');
+    document.getElementById('product-section').innerHTML = `<div class="col-span-full text-center py-20 text-outline">Product not found in inventory.</div>`;
     return;
   }
 
   document.title = product.metaTitle || product.name;
   
+  // Setup Images
   const images = product.images || [];
   const mainImg = document.getElementById('main-image');
   if (mainImg) {
@@ -401,9 +487,19 @@ async function initProductPage() {
     });
   }
 
+  // Setup Headers
   if (document.getElementById('product-name')) document.getElementById('product-name').textContent = product.name;
-  if (document.getElementById('product-color')) document.getElementById('product-color').textContent = product.color ? `Color: ${product.color}` : '';
   
+  // Insert Badges
+  const badgesContainer = document.getElementById('product-badges');
+  if (badgesContainer) {
+    badgesContainer.innerHTML = '';
+    if (product.hotDeal) badgesContainer.innerHTML += `<span class="bg-primary-container text-on-primary-container text-[10px] font-bold px-3 py-1 rounded-full tracking-widest uppercase">Hot Deal</span>`;
+    if (product.availability === 'Pre Order') badgesContainer.innerHTML += `<span class="bg-purple-600 text-white text-[10px] font-bold px-3 py-1 rounded-full tracking-widest uppercase">Pre Order</span>`;
+    badgesContainer.innerHTML += `<span class="bg-surface-container-highest text-primary text-[10px] font-bold px-3 py-1 rounded-full tracking-widest uppercase">${product.availability || 'In Stock'}</span>`;
+  }
+  
+  // Pricing & Calculations
   const isUpcoming = product.availability === 'Upcoming';
   const hasDiscount = Number(product.discount) > 0;
   const price = Number(product.price) || 0;
@@ -412,9 +508,11 @@ async function initProductPage() {
   const priceEl = document.getElementById('product-price');
   if (priceEl) priceEl.innerHTML = isUpcoming ? 'TBA' : `${hasDiscount ? `<s class="text-slate-500 text-xl mr-2">৳${price.toFixed(2)}</s> ` : ''}৳${finalPrice.toFixed(2)}`;
 
-  if (document.getElementById('product-spec')) document.getElementById('product-spec').textContent = product.description || '';
-  if (document.getElementById('product-detailed-desc')) document.getElementById('product-detailed-desc').innerHTML = product.detailedDescription || '';
+  // Meta Desc injection (Underneath Title block)
+  const metaDescEl = document.getElementById('product-meta-desc');
+  if (metaDescEl) metaDescEl.textContent = product.metaDescription || product.description || 'No brief summary available for this item.';
 
+  // Order Options Generation
   const orderRow = document.getElementById('order-row');
   if (orderRow) {
     orderRow.innerHTML = '';
@@ -436,6 +534,41 @@ async function initProductPage() {
     }
   }
 
+  // Left Section: Detailed Description Injection
+  if (document.getElementById('product-detailed-desc')) {
+    document.getElementById('product-detailed-desc').innerHTML = product.detailedDescription || product.description || '<p>No detailed background information available.</p>';
+  }
+
+  // Right Section: Specification Grid Assembly
+  const specsGrid = document.getElementById('product-specs-grid');
+  if (specsGrid) {
+    specsGrid.innerHTML = '';
+    if (product.specs && typeof product.specs === 'object' && Object.keys(product.specs).length > 0) {
+      Object.entries(product.specs).forEach(([key, value]) => {
+        if (key.toLowerCase() !== 'id') {
+          specsGrid.innerHTML += `
+            <div class="flex justify-between items-end pb-4 border-b border-outline-variant/10 last:border-0 last:pb-0 pt-4 first:pt-0">
+              <span class="text-slate-400 font-medium capitalize">${key.replace(/([A-Z])/g, ' $1').trim()}</span>
+              <span class="font-display text-xl text-right">${value}</span>
+            </div>`;
+        }
+      });
+    } else {
+      // Fallback layout if structured specs are not assigned directly yet
+      specsGrid.innerHTML = `
+        <div class="flex justify-between items-end pb-4 border-b border-outline-variant/10">
+          <span class="text-slate-400 font-medium">Category</span>
+          <span class="font-display text-xl text-right">${product.category || 'N/A'}</span>
+        </div>
+        <div class="flex justify-between items-end pb-4 border-b border-outline-variant/10 pt-4">
+          <span class="text-slate-400 font-medium">Color Variation</span>
+          <span class="font-display text-xl text-right">${product.color || 'Standard'}</span>
+        </div>
+      `;
+    }
+  }
+
+  // Inject Related Suggestion Products
   const otherSection = document.getElementById('other-products');
   if (otherSection) {
     otherSection.innerHTML = '';
@@ -444,7 +577,7 @@ async function initProductPage() {
   }
 }
 
-// 4. STANDALONE CHECKOUT PAGE LOGIC (Single & Cart)
+// 4. STANDALONE CHECKOUT PAGE LOGIC 
 async function initCheckoutPage() {
   const urlParams = new URLSearchParams(window.location.search);
   const singleProductId = urlParams.get('id');
@@ -461,23 +594,11 @@ async function initCheckoutPage() {
       return;
     }
     const unitPrice = Number(p.price) - Number(p.discount || 0);
-    checkoutItems.push({
-      id: p.id,
-      name: p.name,
-      color: p.color || '',
-      price: unitPrice,
-      image: p.images?.[0] || 'logo.png',
-      qty: 1, 
-      isPreOrder: p.availability === 'Pre Order'
-    });
+    checkoutItems.push({ id: p.id, name: p.name, color: p.color || '', price: unitPrice, image: p.images?.[0] || 'logo.png', qty: 1, isPreOrder: p.availability === 'Pre Order' });
     if (p.availability === 'Pre Order') hasPreOrder = true;
   } else {
     const cart = getCart();
-    if (cart.length === 0) {
-      alert('Your cart is empty!');
-      window.location.href = 'index.html';
-      return;
-    }
+    if (cart.length === 0) { alert('Your cart is empty!'); window.location.href = 'index.html'; return; }
     cart.forEach(item => {
       const p = products.find(pr => pr.id === item.id);
       if (p) {
@@ -516,13 +637,12 @@ async function initCheckoutPage() {
   if (hasPreOrder && codRadio) {
     codRadio.disabled = true;
     codRadio.parentElement.classList.add('opacity-30', 'pointer-events-none');
-    bkashRadio.checked = true;
+    if (bkashRadio) bkashRadio.checked = true;
   }
 
   function updateCheckoutTotals() {
     const address = document.getElementById('co-address')?.value || '';
     const deliveryFee = calculateDeliveryFee(address);
-    
     const deliveryDisplay = document.getElementById('co-delivery-display');
     if(deliveryDisplay) deliveryDisplay.textContent = `৳${deliveryFee.toFixed(2)}`;
 
@@ -544,10 +664,9 @@ async function initCheckoutPage() {
       if(splitDisplay) splitDisplay.classList.remove('hidden');
       if(document.getElementById('co-advance-display')) document.getElementById('co-advance-display').textContent = `৳${advance.toFixed(2)}`;
       if(document.getElementById('co-due-display')) document.getElementById('co-due-display').textContent = `৳${(total - advance).toFixed(2)}`;
-      
       if(merchantLabel) merchantLabel.textContent = BKASH_NUMBER;
       if(txnContainer) txnContainer.classList.remove('hidden');
-      if(paymentNote) paymentNote.textContent = `Please send 25% advance ৳${advance.toFixed(2)} to ${BKASH_NUMBER} via bKash Send Money to confirm pre-order.`;
+      if(paymentNote) paymentNote.textContent = `Please send 25% advance ৳${advance.toFixed(2)} to ${BKASH_NUMBER} via bKash Send Money.`;
     } 
     else if (selectedMethod === 'Bkash') {
       if(splitDisplay) splitDisplay.classList.add('hidden');
@@ -559,7 +678,7 @@ async function initCheckoutPage() {
       if(splitDisplay) splitDisplay.classList.add('hidden');
       if(merchantLabel) merchantLabel.textContent = COD_NUMBER;
       if(txnContainer) txnContainer.classList.remove('hidden');
-      if(paymentNote) paymentNote.textContent = `Please send ONLY the delivery charge ৳${deliveryFee.toFixed(2)} to ${COD_NUMBER} via bKash Send Money to confirm. Subtotal collected on delivery.`;
+      if(paymentNote) paymentNote.textContent = `Please send ONLY delivery charge ৳${deliveryFee.toFixed(2)} to ${COD_NUMBER} via bKash Send Money.`;
     }
   }
 
@@ -577,20 +696,9 @@ async function initCheckoutPage() {
       const txnId = document.getElementById('co-txn').value.trim();
       const policyAccepted = document.getElementById('co-policy')?.checked;
 
-      if (!name || !phone || !address || !paymentMethod) {
-        alert("Please complete all Operative Details and select a Settlement Protocol.");
-        return;
-      }
-      
-      if ((paymentMethod === 'Bkash' || paymentMethod === 'Cash on Delivery') && !txnId) {
-        alert("Transaction ID is required to verify your payment/delivery charge.");
-        return;
-      }
-      
-      if (!policyAccepted) {
-        alert("You must accept the Shipping & Return policies to deploy.");
-        return;
-      }
+      if (!name || !phone || !address || !paymentMethod) { alert("Please complete all details."); return; }
+      if ((paymentMethod === 'Bkash' || paymentMethod === 'Cash on Delivery') && !txnId) { alert("TXN ID required."); return; }
+      if (!policyAccepted) { alert("Accept policies to deploy."); return; }
 
       btn.innerHTML = `<span class="material-symbols-outlined animate-spin">sync</span> PROCESSING...`;
       btn.disabled = true;
@@ -599,43 +707,20 @@ async function initCheckoutPage() {
       const total = subtotal + deliveryFee;
       let paid = 0, due = 0;
 
-      if (hasPreOrder) {
-        paid = Math.round((subtotal * 0.25) / 5) * 5;
-        due = total - paid;
-      } else if (paymentMethod === 'Bkash') {
-        paid = total;
-        due = 0;
-      } else if (paymentMethod === 'Cash on Delivery') {
-        paid = deliveryFee;
-        due = subtotal;
-      }
+      if (hasPreOrder) { paid = Math.round((subtotal * 0.25) / 5) * 5; due = total - paid; }
+      else if (paymentMethod === 'Bkash') { paid = total; due = 0; }
+      else if (paymentMethod === 'Cash on Delivery') { paid = deliveryFee; due = subtotal; }
 
       try {
         const orderData = {
           timeISO: new Date().toISOString(),
-          items: checkoutItems.map(i => ({
-              productId: i.id,
-              productName: i.name,
-              color: i.color,
-              quantity: i.qty,
-              unitPrice: i.price,
-              wasPreOrder: i.isPreOrder
-          })),
-          deliveryFee, total, paid, due,
-          customerName: name, phone, address,
-          paymentMethod,
-          paymentNumber: document.getElementById('co-merchant-number').textContent,
-          transactionId: txnId.toUpperCase(),
-          status: 'Pending'
+          items: checkoutItems.map(i => ({ productId: i.id, productName: i.name, color: i.color, quantity: i.qty, unitPrice: i.price, wasPreOrder: i.isPreOrder })),
+          deliveryFee, total, paid, due, customerName: name, phone, address, paymentMethod,
+          paymentNumber: document.getElementById('co-merchant-number').textContent, transactionId: txnId.toUpperCase(), status: 'Pending'
         };
 
         const docRef = await addDoc(collection(db, 'orders'), orderData);
-        
-        if (!singleProductId) {
-          localStorage.removeItem('cart');
-          updateCartUI();
-        }
-        
+        if (!singleProductId) { localStorage.removeItem('cart'); updateCartUI(); }
         showOrderConfirmation(docRef.id);
       } catch (err) {
         console.error(err);
@@ -656,45 +741,33 @@ function showOrderConfirmation(orderId) {
         <span class="material-symbols-outlined text-5xl text-primary">verified</span>
       </div>
       <h2 class="font-headline text-3xl font-bold tracking-tighter text-on-surface mb-2">Transmission<br>Successful</h2>
-      <p class="text-outline text-sm mb-6 leading-relaxed">Dispatch manifest <span class="text-primary font-mono font-bold">#${orderId.slice(-6).toUpperCase()}</span> has been uploaded to the lattice.</p>
+      <p class="text-outline text-sm mb-6 leading-relaxed">Dispatch manifest <span class="text-primary font-mono font-bold">#${orderId.slice(-6).toUpperCase()}</span> uploaded.</p>
       <button onclick="window.location.href='index.html'" class="w-full bg-primary text-white font-headline font-bold py-4 rounded-xl tracking-widest uppercase shadow-lg shadow-purple-500/20 active:scale-[0.98] transition-all">
         Return to Base
       </button>
     </div>
   `;
   document.body.appendChild(modal);
-  setTimeout(() => {
-    modal.classList.remove('opacity-0');
-    modal.querySelector('div').classList.remove('scale-95');
-  }, 50);
+  setTimeout(() => { modal.classList.remove('opacity-0'); modal.querySelector('div').classList.remove('scale-95'); }, 50);
 }
 
 // ====== GLOBAL INITIALIZATION ROUTER ======
 document.addEventListener('DOMContentLoaded', async () => {
   updateCartUI();
 
-  // TOP LEVEL UI EVENT LISTENERS
+  // Navigation UI Linkers
   document.getElementById('cart-link')?.addEventListener('click', () => {
     const slider = document.getElementById('cart-slider');
-    if (slider) {
-      slider.classList.remove('hidden');
-      slider.classList.remove('translate-x-full');
-    }
+    if (slider) { slider.classList.remove('hidden'); slider.classList.remove('translate-x-full'); }
   });
   
   document.getElementById('close-cart')?.addEventListener('click', () => {
     const slider = document.getElementById('cart-slider');
-    if (slider) {
-      slider.classList.add('translate-x-full');
-    }
+    if (slider) slider.classList.add('translate-x-full');
   });
   
   document.getElementById('checkout-cart')?.addEventListener('click', () => {
-    const cart = getCart();
-    if (cart.length === 0) {
-      alert('Your cart is empty!');
-      return;
-    }
+    if (getCart().length === 0) { alert('Your cart is empty!'); return; }
     window.location.href = 'checkout.html';
   });
 
@@ -702,10 +775,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('image-viewer')?.classList.add('hidden');
   });
 
-  // PAGE LOGIC ROUTING
+  // Routing Execution Nodes 
   const isHome = !!document.getElementById('interest-products');
   const isProducts = !!document.getElementById('products-grid');
-  const isProduct = !!document.getElementById('product-section'); // (Ensure this exists in your product.html)
+  const isProduct = !!document.getElementById('product-section');
   const isCheckoutPage = window.location.pathname.includes('checkout.html');
 
   if (isHome) await initHomePage();
