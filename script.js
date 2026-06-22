@@ -148,6 +148,26 @@ function calculateDeliveryFee(address) {
   return 150;
 }
 
+// NEW STRING PARSER: Converts "Material: PBT Key Count: 128" -> { Material: "PBT", "Key Count": "128" }
+function parseSpecsData(specData) {
+  if (!specData) return {};
+  if (typeof specData === 'object') return specData; // Failsafe if data is already JSON
+  
+  if (typeof specData === 'string') {
+    const specsObj = {};
+    // Regex identifies [Key Text]: [Value Text] looking ahead to the next colon or string end
+    const regex = /([A-Za-z0-9\-\+ ]+?):\s*(.+?)(?=\s+[A-Za-z0-9\-\+ ]+?:|$)/g;
+    let match;
+    while ((match = regex.exec(specData)) !== null) {
+      const key = match[1].trim();
+      const value = match[2].trim();
+      if (key && value) specsObj[key] = value;
+    }
+    return specsObj;
+  }
+  return {};
+}
+
 // ====== TAILWIND PRODUCT CARD GENERATOR ======
 function createProductCard(p, products) {
   const isUpcoming = p.availability === 'Upcoming';
@@ -241,7 +261,7 @@ async function initHomePage() {
   }
 }
 
-// 2. PRODUCTS PAGE LOGIC (Pagination & Dynamic Specification Filters)
+// 2. PRODUCTS PAGE LOGIC
 async function initProductsPage() {
   const container = document.getElementById('products-grid');
   const paginationContainer = document.getElementById('pagination-controls');
@@ -255,12 +275,10 @@ async function initProductsPage() {
   const dynamicSpecContainer = document.getElementById('dynamic-spec-filters');
   const clearFiltersBtn = document.getElementById('clear-filters-btn');
 
-  // Pagination & Filter States
   let currentPage = 1;
   const itemsPerPage = 21;
   let selectedSpecs = {};
 
-  // Extract Category Map
   const categories = ['All', ...new Set(products.map(p => p.category).filter(Boolean))];
   
   if (categoryContainer) {
@@ -272,13 +290,14 @@ async function initProductsPage() {
     `).join('');
   }
 
-  // Build Dynamic Checkbox Spec Filters
   function buildDynamicSpecFiltersUI() {
     if (!dynamicSpecContainer) return;
     const specMap = {}; 
     products.forEach(p => {
-      if (p.specs && typeof p.specs === 'object') {
-        Object.entries(p.specs).forEach(([key, val]) => {
+      // UTILIZE THE PARSER HERE
+      const parsedSpecs = parseSpecsData(p.specs);
+      if (Object.keys(parsedSpecs).length > 0) {
+        Object.entries(parsedSpecs).forEach(([key, val]) => {
           if (key && val && key.toLowerCase() !== 'id') {
             const formattedKey = key.trim();
             const formattedVal = val.toString().trim();
@@ -323,7 +342,6 @@ async function initProductsPage() {
     });
   }
 
-  // Extract URL parameters (For handling Global Header Search routing)
   const params = new URLSearchParams(window.location.search);
   const urlCategory = params.get('category');
   const urlSearch = params.get('search');
@@ -332,33 +350,31 @@ async function initProductsPage() {
      const targetRadio = document.querySelector(`input[name="cat-filter"][value="${urlCategory}"]`);
      if (targetRadio) targetRadio.checked = true;
   }
-  if (urlSearch && searchInput) {
-     searchInput.value = urlSearch;
-  }
+  if (urlSearch && searchInput) searchInput.value = urlSearch;
 
   function renderGrid() {
     let result = [...products];
     
-    // 1. Text Search
     if (searchInput && searchInput.value) {
       const q = searchInput.value.toLowerCase();
       result = result.filter(p => p.name.toLowerCase().includes(q) || (p.description && p.description.toLowerCase().includes(q)));
     }
 
-    // 2. Category Filter
     const checkedCat = document.querySelector('input[name="cat-filter"]:checked');
     if (checkedCat && checkedCat.value !== 'All') {
       result = result.filter(p => p.category === checkedCat.value);
     }
 
-    // 3. Dynamic Spec Filters Check
     Object.entries(selectedSpecs).forEach(([specKey, allowedValues]) => {
       if (allowedValues.length > 0) {
-        result = result.filter(p => p.specs && p.specs[specKey] && allowedValues.includes(p.specs[specKey].toString().trim()));
+        result = result.filter(p => {
+          // UTILIZE THE PARSER HERE FOR FILTER VALIDATION
+          const parsedSpecs = parseSpecsData(p.specs);
+          return parsedSpecs[specKey] && allowedValues.includes(parsedSpecs[specKey].toString().trim());
+        });
       }
     });
 
-    // 4. Sort Mechanism
     if (sortSelect) {
       const sortVal = sortSelect.value;
       if (sortVal === 'price-low') {
@@ -368,12 +384,10 @@ async function initProductsPage() {
       }
     }
 
-    // 5. Pagination Split (21 items)
     const totalPages = Math.ceil(result.length / itemsPerPage);
     if (currentPage > totalPages) currentPage = Math.max(1, totalPages);
     const paginatedItems = result.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
-    // Paint Grid
     container.innerHTML = '';
     if (result.length === 0) {
       container.innerHTML = `<div class="col-span-full text-center py-12 text-outline bg-surface-container-low rounded-xl border border-white/5">No products found matching your criteria.</div>`;
@@ -439,7 +453,7 @@ async function initProductsPage() {
   renderGrid();
 }
 
-// 3. PRODUCT DETAILS PAGE LOGIC (Restructured Mockup Layout)
+// 3. PRODUCT DETAILS PAGE LOGIC
 async function initProductPage() {
   const params = new URLSearchParams(window.location.search);
   const urlSlug = params.get('slug');
@@ -448,12 +462,10 @@ async function initProductPage() {
   const products = await loadProducts();
   let product = null;
 
-  // Retrieve exact product by checking matched slugs identical to catalog generation
   for (const p of products) {
     const sameName = products.filter(other => other.name.toLowerCase() === p.name.toLowerCase());
     let slug = p.name.toLowerCase().replace(/\s+/g, '-');
     if (sameName.length > 1 && p.color) slug += '-' + p.color.toLowerCase().replace(/\s+/g, '-');
-    
     if (slug === urlSlug) { product = p; break; }
   }
 
@@ -464,7 +476,6 @@ async function initProductPage() {
 
   document.title = product.metaTitle || product.name;
   
-  // Setup Images
   const images = product.images || [];
   const mainImg = document.getElementById('main-image');
   if (mainImg) {
@@ -487,10 +498,8 @@ async function initProductPage() {
     });
   }
 
-  // Setup Headers
   if (document.getElementById('product-name')) document.getElementById('product-name').textContent = product.name;
   
-  // Insert Badges
   const badgesContainer = document.getElementById('product-badges');
   if (badgesContainer) {
     badgesContainer.innerHTML = '';
@@ -499,7 +508,6 @@ async function initProductPage() {
     badgesContainer.innerHTML += `<span class="bg-surface-container-highest text-primary text-[10px] font-bold px-3 py-1 rounded-full tracking-widest uppercase">${product.availability || 'In Stock'}</span>`;
   }
   
-  // Pricing & Calculations
   const isUpcoming = product.availability === 'Upcoming';
   const hasDiscount = Number(product.discount) > 0;
   const price = Number(product.price) || 0;
@@ -508,11 +516,9 @@ async function initProductPage() {
   const priceEl = document.getElementById('product-price');
   if (priceEl) priceEl.innerHTML = isUpcoming ? 'TBA' : `${hasDiscount ? `<s class="text-slate-500 text-xl mr-2">৳${price.toFixed(2)}</s> ` : ''}৳${finalPrice.toFixed(2)}`;
 
-  // Meta Desc injection (Underneath Title block)
   const metaDescEl = document.getElementById('product-meta-desc');
   if (metaDescEl) metaDescEl.textContent = product.metaDescription || product.description || 'No brief summary available for this item.';
 
-  // Order Options Generation
   const orderRow = document.getElementById('order-row');
   if (orderRow) {
     orderRow.innerHTML = '';
@@ -534,17 +540,20 @@ async function initProductPage() {
     }
   }
 
-  // Left Section: Detailed Description Injection
   if (document.getElementById('product-detailed-desc')) {
     document.getElementById('product-detailed-desc').innerHTML = product.detailedDescription || product.description || '<p>No detailed background information available.</p>';
   }
 
-  // Right Section: Specification Grid Assembly
+  // Right Section: Specification Grid Assembly using the String Parser
   const specsGrid = document.getElementById('product-specs-grid');
   if (specsGrid) {
     specsGrid.innerHTML = '';
-    if (product.specs && typeof product.specs === 'object' && Object.keys(product.specs).length > 0) {
-      Object.entries(product.specs).forEach(([key, value]) => {
+    
+    // UTILIZE THE PARSER HERE
+    const parsedSpecs = parseSpecsData(product.specs);
+    
+    if (Object.keys(parsedSpecs).length > 0) {
+      Object.entries(parsedSpecs).forEach(([key, value]) => {
         if (key.toLowerCase() !== 'id') {
           specsGrid.innerHTML += `
             <div class="flex justify-between items-end pb-4 border-b border-outline-variant/10 last:border-0 last:pb-0 pt-4 first:pt-0">
@@ -554,7 +563,7 @@ async function initProductPage() {
         }
       });
     } else {
-      // Fallback layout if structured specs are not assigned directly yet
+      // Fallback
       specsGrid.innerHTML = `
         <div class="flex justify-between items-end pb-4 border-b border-outline-variant/10">
           <span class="text-slate-400 font-medium">Category</span>
@@ -568,7 +577,6 @@ async function initProductPage() {
     }
   }
 
-  // Inject Related Suggestion Products
   const otherSection = document.getElementById('other-products');
   if (otherSection) {
     otherSection.innerHTML = '';
