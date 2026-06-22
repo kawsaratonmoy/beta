@@ -36,17 +36,23 @@ function parseSpecsData(specData) {
       try { return JSON.parse(specData); } catch(e) {}
     }
     
-    const specsObj = {};
-    const parts = specData.split(':');
-    if (parts.length <= 1) return {};
+    // If it's a plain string with no colons, just return it as a description
+    if (!specData.includes(':')) {
+      return { "Details": specData.trim() };
+    }
 
-    // Dictionary of all possible target specification names
+    const parts = specData.split(':');
+    const specsObj = {};
+
+    // Extensive dictionary of expected keyboard keys
     const knownKeys = [
       "Material", "Legend", "Printing Process", "Key Count", "Profile", "Layout", 
       "Shine-Through", "Switch Type", "Switches", "Brand", "Model", "Connectivity", 
       "Backlight", "Battery Capacity", "Battery", "Interface", "Weight", "Size", 
-      "Features", "Type", "Polling Rate", "Lifespan", "Hotswap", "Hot-swappable", "Color",
-      "Mounting Style", "Case Material", "Plate Material", "Stabilizers", "Compatibility"
+      "Features", "Type", "Polling Rate", "Lifespan", "Hotswap", "Hot-swappable", 
+      "Color", "Mounting Style", "Case Material", "Plate Material", "Stabilizers", 
+      "Compatibility", "Dimensions", "Keycaps", "System Support", "Cable Length", 
+      "Software", "Warranty", "Lighting", "Actuation Force", "Bottom Out"
     ];
     
     // Sort keys descending by length so multi-word matches take absolute priority
@@ -54,47 +60,54 @@ function parseSpecsData(specData) {
 
     // The very first item before the first colon is always our initial spec name
     let currentKey = parts[0].trim();
+    // Standardize the first key's capitalization
+    currentKey = currentKey.charAt(0).toUpperCase() + currentKey.slice(1);
 
     for (let i = 1; i < parts.length; i++) {
-      const segment = parts[i];
+      let segment = parts[i];
       
       // If it is the last chunk, the entire rest of the string is the final value
       if (i === parts.length - 1) {
         specsObj[currentKey] = segment.trim();
       } else {
-        // Look backward from the end of the segment to find where the next spec name starts
-        let foundNextKey = false;
+        // Strip trailing spaces that would break the matching algorithm
+        segment = segment.replace(/\s+$/, '');
+        let nextKey = "";
+        let value = "";
+        let foundKnownKey = false;
         
         for (const knownKey of knownKeys) {
+          // Escape key for regex to prevent issues with hyphens (e.g., "Shine-Through")
           const escapedKey = knownKey.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
-          const regex = new RegExp(`(?:\\s+|^)(${escapedKey})$`, 'i');
+          // Look backward from the end of the segment to find where the next spec name starts
+          // \b or \s ensures we don't accidentally split a word like "Prototype" finding "Type"
+          const regex = new RegExp(`(?:\\b|\\s+)(${escapedKey})$`, 'i');
           const match = segment.match(regex);
           
           if (match) {
-            const nextKey = match[1].trim();
-            const valEndIndex = segment.lastIndexOf(match[0]);
-            const value = segment.substring(0, valEndIndex).trim();
-            
-            // Map the parsed pair cleanly
-            specsObj[currentKey] = value;
-            
-            // Preserve the standard clean casing from our knownKeys list
-            currentKey = knownKeys.find(k => k.toLowerCase() === nextKey.toLowerCase()) || nextKey;
-            foundNextKey = true;
+            nextKey = match[1].trim();
+            value = segment.substring(0, match.index).trim();
+            foundKnownKey = true;
             break;
           }
         }
         
         // Fallback safety if a completely unique custom key is ever written in the database
-        if (!foundNextKey) {
+        if (!foundKnownKey) {
           const words = segment.trim().split(/\s+/);
           if (words.length > 0) {
-            const nextKey = words.pop();
-            const value = words.join(' ');
-            specsObj[currentKey] = value;
-            currentKey = nextKey;
+            nextKey = words.pop();
+            value = words.join(' ').trim();
           }
         }
+
+        // Map the parsed pair cleanly
+        specsObj[currentKey] = value;
+        
+        // Format the next key nicely (Title Case) for the UI display on the next loop
+        currentKey = nextKey.split(' ')
+          .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+          .join(' ');
       }
     }
     return specsObj;
@@ -556,7 +569,7 @@ async function initProductPage() {
     document.getElementById('product-detailed-desc').innerHTML = product.detailedDescription || product.description || '<p>No detailed background information available.</p>';
   }
 
-  // Right Section: Clean UI Specification Table
+  // Right Section: Clean UI Specification Table Fix
   const specsGrid = document.getElementById('product-specs-grid');
   if (specsGrid) {
     specsGrid.innerHTML = '';
@@ -564,20 +577,20 @@ async function initProductPage() {
     
     if (Object.keys(parsedSpecs).length > 0) {
       Object.entries(parsedSpecs).forEach(([key, value]) => {
-        if (key.toLowerCase() !== 'id') {
-          // Display the spec name cleanly as it was mapped
+        if (key.toLowerCase() !== 'id' && value.trim() !== '') {
+          // Changed layout structure here to safely wrap long text like "Five-Sided Dye Sublimation"
           specsGrid.innerHTML += `
-            <div class="flex justify-between items-end pb-4 border-b border-outline-variant/10 last:border-0 last:pb-0 pt-4 first:pt-0">
-              <span class="text-slate-400 font-medium">${key}</span>
-              <span class="font-display text-xl text-right">${value}</span>
+            <div class="flex justify-between items-center py-3 border-b border-white/5 last:border-0 gap-4">
+              <span class="text-slate-400 font-medium whitespace-nowrap">${key}</span>
+              <span class="font-display font-medium text-right text-slate-200">${value}</span>
             </div>`;
         }
       });
     } else {
       specsGrid.innerHTML = `
-        <div class="flex justify-between items-end pb-4 border-b border-outline-variant/10">
+        <div class="flex justify-between items-center py-3 border-b border-white/5">
           <span class="text-slate-400 font-medium">Category</span>
-          <span class="font-display text-xl text-right">${product.category || 'N/A'}</span>
+          <span class="font-display font-medium text-right text-slate-200">${product.category || 'N/A'}</span>
         </div>
       `;
     }
