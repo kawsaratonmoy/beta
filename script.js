@@ -3,10 +3,37 @@ import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from
 import { getFirestore, collection, getDocs, addDoc, doc, updateDoc, deleteDoc, getDoc, orderBy, query, where, runTransaction } from 'https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js';
 import { firebaseConfig, BKASH_NUMBER, COD_NUMBER, DELIVERY_FEE } from './config.js';
 
-// Initialize Firebase
+// ====== INITIALIZE FIREBASE ======
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
+
+// ====== GLOBAL UTILS ======
+const productsMap = new Map();
+
+async function loadProducts() {
+  try {
+    const snapshot = await getDocs(collection(db, 'products'));
+    const products = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    productsMap.clear();
+    products.forEach(p => productsMap.set(p.id, p));
+    return products;
+  } catch (err) {
+    console.error('Error loading products:', err);
+    return [];
+  }
+}
+
+function shuffle(array) {
+  return array.slice().sort(() => Math.random() - 0.5);
+}
+
+function calculateDeliveryFee(address) {
+  const lowerAddr = address.toLowerCase();
+  if (lowerAddr.includes("savar")) return 70;
+  if (lowerAddr.includes("dhaka")) return 110;
+  return 150;
+}
 
 // ====== CART SYSTEM ======
 function getCart() {
@@ -16,7 +43,11 @@ function getCart() {
 
 function saveCart(cart) {
   localStorage.setItem('cart', JSON.stringify(cart));
-  updateCartUI();
+  try {
+    updateCartUI();
+  } catch (err) {
+    console.warn("Cart UI update skipped outside standard store pages:", err);
+  }
 }
 
 window.addToCart = function(productId, qty = 1) {
@@ -44,7 +75,7 @@ window.addToCart = function(productId, qty = 1) {
       name: product.name,
       color: product.color || '',
       price: finalPrice,
-      image: product.images?.[0] || 'logo.png',
+      image: p.images?.[0] || 'logo.png',
       qty: qty
     });
   }
@@ -131,33 +162,6 @@ function updateCartUI() {
   if (totalEl) totalEl.innerHTML = `<strong>Total: ৳${total}</strong>`;
 }
 
-// ====== GLOBAL UTILS ======
-const productsMap = new Map();
-
-async function loadProducts() {
-  try {
-    const snapshot = await getDocs(collection(db, 'products'));
-    const products = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-    productsMap.clear();
-    products.forEach(p => productsMap.set(p.id, p));
-    return products;
-  } catch (err) {
-    console.error('Error loading products:', err);
-    return [];
-  }
-}
-
-function shuffle(array) {
-  return array.slice().sort(() => Math.random() - 0.5);
-}
-
-function calculateDeliveryFee(address) {
-  const lowerAddr = address.toLowerCase();
-  if (lowerAddr.includes("savar")) return 70;
-  else if (lowerAddr.includes("dhaka")) return 110;
-  return 150;
-}
-
 // ====== TAILWIND PRODUCT CARD GENERATOR ======
 function createProductCard(p, products) {
   const isUpcoming = p.availability === 'Upcoming';
@@ -211,16 +215,13 @@ function createProductCard(p, products) {
   return card;
 }
 
-// ====== PAGE ROUTERS ======
+// ====== STOREFRONT PAGE ROUTERS ======
 
-// 1. HOME PAGE LOGIC
 async function initHomePage() {
   const productsContainer = document.getElementById('interest-products');
   const products = await loadProducts();
-  
   if (products.length === 0) return;
 
-  // Random Hero Generator (Safely updating the DOM and removing shimmer)
   const heroSection = document.getElementById('hero-section');
   if (heroSection) {
       const randomProduct = products[Math.floor(Math.random() * products.length)];
@@ -234,16 +235,16 @@ async function initHomePage() {
       const titleEl = document.getElementById('hero-title');
       if(titleEl) {
         titleEl.innerHTML = `${p1} <br/><span class="text-transparent bg-clip-text bg-gradient-to-br from-primary to-primary-container">${p2}</span>`;
-        titleEl.classList.remove('shimmer', 'text-transparent'); // Removes placeholder animation
+        titleEl.classList.remove('shimmer', 'text-transparent');
       }
 
       const descEl = document.getElementById('hero-desc');
-      if(descEl) descEl.textContent = randomProduct.description || "Experience premium mechanical artistry. Built for durability, aesthetic precision, and the ultimately satisfying tactile soundscape.";
+      if(descEl) descEl.textContent = randomProduct.description || "Experience premium precision art components.";
       
       const imgEl = document.getElementById('hero-img');
-      if(imgEl && randomProduct.images && randomProduct.images[0]) {
+      if(imgEl && randomProduct.images?.[0]) {
         imgEl.src = randomProduct.images[0];
-        imgEl.classList.remove('shimmer'); // Removes placeholder animation
+        imgEl.classList.remove('shimmer');
       }
       
       const sameName = products.filter(other => other.name.toLowerCase() === randomProduct.name.toLowerCase());
@@ -256,29 +257,24 @@ async function initHomePage() {
       heroSection.classList.remove('opacity-0');
   }
 
-  // Interest Products Generation
   if (productsContainer) {
-    productsContainer.innerHTML = ''; // This clears out the HTML Shimmer Cards
+    productsContainer.innerHTML = '';
     shuffle(products).slice(0, 8).forEach(p => {
       productsContainer.appendChild(createProductCard(p, products));
     });
   }
 }
 
-// 2. PRODUCTS PAGE LOGIC (Updated with advanced filters)
 async function initProductsPage() {
   const container = document.getElementById('products-grid');
   if (!container) return;
 
   const products = await loadProducts();
-  
   const searchInput = document.getElementById('search-input');
   const sortSelect = document.getElementById('sort-select');
   const categoryContainer = document.getElementById('category-filters-container');
 
-  // Extract unique categories and populate sidebar
   const categories = ['All', ...new Set(products.map(p => p.category).filter(Boolean))];
-  
   if (categoryContainer) {
     categoryContainer.innerHTML = categories.map(cat => `
       <label class="flex items-center gap-3 cursor-pointer group mb-2">
@@ -288,7 +284,6 @@ async function initProductsPage() {
     `).join('');
   }
 
-  // Check if routed here with a category URL parameter from the homepage
   const params = new URLSearchParams(window.location.search);
   const urlCategory = params.get('category');
   if (urlCategory && categoryContainer) {
@@ -296,62 +291,42 @@ async function initProductsPage() {
      if (targetRadio) targetRadio.checked = true;
   }
 
-  // Grid Render Function based on active filters
   function renderGrid() {
     let result = [...products];
-    
-    // Apply Search
     if (searchInput && searchInput.value) {
       const q = searchInput.value.toLowerCase();
       result = result.filter(p => p.name.toLowerCase().includes(q) || (p.description && p.description.toLowerCase().includes(q)));
     }
 
-    // Apply Category
     const checkedCat = document.querySelector('input[name="cat-filter"]:checked');
     if (checkedCat && checkedCat.value !== 'All') {
       result = result.filter(p => p.category === checkedCat.value);
     }
 
-    // Apply Sort
     if (sortSelect) {
       const sortVal = sortSelect.value;
       if (sortVal === 'price-low') {
-        result.sort((a, b) => {
-          const aPrice = Number(a.price) - Number(a.discount || 0);
-          const bPrice = Number(b.price) - Number(b.discount || 0);
-          return aPrice - bPrice;
-        });
+        result.sort((a, b) => (Number(a.price) - Number(a.discount || 0)) - (Number(b.price) - Number(b.discount || 0)));
       } else if (sortVal === 'price-high') {
-        result.sort((a, b) => {
-          const aPrice = Number(a.price) - Number(a.discount || 0);
-          const bPrice = Number(b.price) - Number(b.discount || 0);
-          return bPrice - aPrice;
-        });
+        result.sort((a, b) => (Number(b.price) - Number(b.discount || 0)) - (Number(a.price) - Number(a.discount || 0)));
       }
     }
 
-    // Paint to DOM
     container.innerHTML = '';
     if (result.length === 0) {
-      container.innerHTML = `<div class="col-span-full text-center py-12 text-outline">No products found matching your criteria.</div>`;
+      container.innerHTML = `<div class="col-span-full text-center py-12 text-outline">No items found matching criteria.</div>`;
       return;
     }
-
-    result.forEach(p => {
-      container.appendChild(createProductCard(p, products));
-    });
+    result.forEach(p => container.appendChild(createProductCard(p, products)));
   }
 
-  // Bind Event Listeners
   if (searchInput) searchInput.addEventListener('input', renderGrid);
   if (sortSelect) sortSelect.addEventListener('change', renderGrid);
   if (categoryContainer) categoryContainer.addEventListener('change', renderGrid);
 
-  // Initial Paint
   renderGrid();
 }
 
-// 3. PRODUCT DETAILS PAGE LOGIC
 async function initProductPage() {
   const params = new URLSearchParams(window.location.search);
   const urlSlug = params.get('slug');
@@ -363,22 +338,13 @@ async function initProductPage() {
   for (const p of products) {
     const sameName = products.filter(other => other.name.toLowerCase() === p.name.toLowerCase());
     let slug = p.name.toLowerCase().replace(/\s+/g, '-');
-    if (sameName.length > 1 && p.color) {
-      slug += '-' + p.color.toLowerCase().replace(/\s+/g, '-');
-    }
-    if (slug === urlSlug) {
-      product = p;
-      break;
-    }
+    if (sameName.length > 1 && p.color) slug += '-' + p.color.toLowerCase().replace(/\s+/g, '-');
+    if (slug === urlSlug) { product = p; break; }
   }
 
-  if (!product) {
-    alert('Product not found');
-    return;
-  }
+  if (!product) { alert('Product not found'); return; }
 
   document.title = product.metaTitle || product.name;
-  
   const images = product.images || [];
   const mainImg = document.getElementById('main-image');
   if (mainImg) {
@@ -420,32 +386,21 @@ async function initProductPage() {
   if (orderRow) {
     orderRow.innerHTML = '';
     if (isUpcoming) {
-      orderRow.innerHTML = `<button class="w-full py-5 bg-surface-variant/40 backdrop-blur-md text-slate-400 font-display font-bold text-lg rounded-xl cursor-not-allowed" disabled>Upcoming - Stay Tuned</button>`;
+      orderRow.innerHTML = `<button class="w-full py-5 bg-surface-variant/40 text-slate-400 font-bold rounded-xl cursor-not-allowed" disabled>Upcoming</button>`;
     } else if (Number(product.stock) <= 0 && product.availability !== 'Pre Order') {
-      orderRow.innerHTML = `<button class="w-full py-5 bg-red-900/30 text-red-400 font-display font-bold text-lg rounded-xl border border-red-900/50 cursor-not-allowed" disabled>Out of Stock</button>`;
+      orderRow.innerHTML = `<button class="w-full py-5 bg-red-900/30 text-red-400 font-bold rounded-xl cursor-not-allowed" disabled>Out of Stock</button>`;
     } else {
       orderRow.innerHTML = `
-        <button id="btn-buy-now" class="w-full py-5 bg-gradient-to-br from-primary to-primary-container text-on-primary-fixed font-display font-bold text-lg rounded-xl flex items-center justify-center gap-3 hover:shadow-[0_0_20px_rgba(236,215,255,0.3)] transition-all active:scale-95 duration-150">
-          <span class="material-symbols-outlined">bolt</span> ${product.availability === 'Pre Order' ? 'Pre Order Now' : 'Order Now'}
-        </button>
-        <button id="btn-add-cart" class="w-full py-5 bg-surface-variant/40 backdrop-blur-md text-primary font-display font-bold text-lg rounded-xl border border-outline-variant/20 hover:bg-surface-variant/60 transition-all active:scale-95 duration-150">
-          Add to Cart
-        </button>
+        <button id="btn-buy-now" class="w-full py-5 bg-gradient-to-br from-primary to-primary-container text-on-primary-fixed font-bold rounded-xl flex items-center justify-center gap-3 active:scale-95 duration-150">Order Now</button>
+        <button id="btn-add-cart" class="w-full py-5 bg-surface-variant/40 text-primary font-bold rounded-xl border border-outline-variant/20 active:scale-95 duration-150">Add to Cart</button>
       `;
       document.getElementById('btn-buy-now').onclick = () => { window.location.href = `checkout.html?id=${product.id}`; };
       document.getElementById('btn-add-cart').onclick = () => { window.addToCart(product.id); alert('Added to cart!'); };
     }
   }
-
-  const otherSection = document.getElementById('other-products');
-  if (otherSection) {
-    otherSection.innerHTML = '';
-    const eligible = products.filter(p => p.availability !== 'Upcoming' && p.id !== product.id);
-    shuffle(eligible).slice(0, 4).forEach(p => otherSection.appendChild(createProductCard(p, products)));
-  }
 }
 
-// 4. STANDALONE CHECKOUT PAGE LOGIC (Single & Cart)
+// ====== STANDALONE CHECKOUT ENGINE ======
 async function initCheckoutPage() {
   const urlParams = new URLSearchParams(window.location.search);
   const singleProductId = urlParams.get('id');
@@ -456,29 +411,16 @@ async function initCheckoutPage() {
 
   if (singleProductId) {
     const p = products.find(x => x.id === singleProductId);
-    if (!p) {
-      alert('Product not found.');
-      window.location.href = 'index.html';
-      return;
-    }
+    if (!p) { alert('Product context error.'); window.location.href = 'index.html'; return; }
     const unitPrice = Number(p.price) - Number(p.discount || 0);
     checkoutItems.push({
-      id: p.id,
-      name: p.name,
-      color: p.color || '',
-      price: unitPrice,
-      image: p.images?.[0] || 'logo.png',
-      qty: 1, 
-      isPreOrder: p.availability === 'Pre Order'
+      id: p.id, name: p.name, color: p.color || '', price: unitPrice,
+      image: p.images?.[0] || 'logo.png', qty: 1, isPreOrder: p.availability === 'Pre Order'
     });
     if (p.availability === 'Pre Order') hasPreOrder = true;
   } else {
     const cart = getCart();
-    if (cart.length === 0) {
-      alert('Your cart is empty!');
-      window.location.href = 'index.html';
-      return;
-    }
+    if (cart.length === 0) { alert('Your cart is empty!'); window.location.href = 'index.html'; return; }
     cart.forEach(item => {
       const p = products.find(pr => pr.id === item.id);
       if (p) {
@@ -500,9 +442,9 @@ async function initCheckoutPage() {
         <div class="flex gap-4 items-center bg-surface-container-lowest p-3 rounded-xl border border-white/5">
           <img src="${item.image}" class="w-16 h-16 object-cover rounded-lg bg-surface-variant">
           <div class="flex-grow">
-            <h4 class="font-headline text-sm font-bold text-on-surface">${item.name}</h4>
+            <h4 class="text-sm font-bold text-on-surface">${item.name}</h4>
             <p class="text-xs text-outline mb-1">Color: ${item.color || 'Base'} | Qty: ${item.qty}</p>
-            <span class="text-primary font-mono text-sm font-bold">৳${itemTotal.toFixed(2)}</span>
+            <span class="text-primary font-mono font-bold">৳${itemTotal.toFixed(2)}</span>
           </div>
         </div>
       `;
@@ -539,11 +481,8 @@ async function initCheckoutPage() {
     const splitDisplay = document.getElementById('preorder-split-display');
 
     if (payBox) {
-      if (selectedMethod || hasPreOrder) {
-        payBox.classList.remove('hidden');
-      } else {
-        payBox.classList.add('hidden');
-      }
+      if (selectedMethod || hasPreOrder) payBox.classList.remove('hidden');
+      else payBox.classList.add('hidden');
     }
 
     if (hasPreOrder) {
@@ -554,19 +493,19 @@ async function initCheckoutPage() {
       
       if(merchantLabel) merchantLabel.textContent = BKASH_NUMBER;
       if(txnContainer) txnContainer.classList.remove('hidden');
-      if(paymentNote) paymentNote.textContent = `Please send 25% advance ৳${advance.toFixed(2)} to ${BKASH_NUMBER} via bKash Send Money to confirm pre-order.`;
+      if(paymentNote) paymentNote.textContent = `Please send 25% advance ৳${advance.toFixed(2)} to ${BKASH_NUMBER} via bKash to confirm your pre-order.`;
     } 
     else if (selectedMethod === 'Bkash') {
       if(splitDisplay) splitDisplay.classList.add('hidden');
       if(merchantLabel) merchantLabel.textContent = BKASH_NUMBER;
       if(txnContainer) txnContainer.classList.remove('hidden');
-      if(paymentNote) paymentNote.textContent = `Please send total ৳${total.toFixed(2)} to ${BKASH_NUMBER} via bKash Send Money.`;
+      if(paymentNote) paymentNote.textContent = `Please send total ৳${total.toFixed(2)} to ${BKASH_NUMBER} via bKash.`;
     } 
     else if (selectedMethod === 'Cash on Delivery') {
       if(splitDisplay) splitDisplay.classList.add('hidden');
       if(merchantLabel) merchantLabel.textContent = COD_NUMBER;
       if(txnContainer) txnContainer.classList.remove('hidden');
-      if(paymentNote) paymentNote.textContent = `Please send ONLY the delivery charge ৳${deliveryFee.toFixed(2)} to ${COD_NUMBER} via bKash Send Money to confirm. Subtotal collected on delivery.`;
+      if(paymentNote) paymentNote.textContent = `Please send ONLY delivery charge ৳${deliveryFee.toFixed(2)} to ${COD_NUMBER} via bKash. Balance is collected at delivery.`;
     }
   }
 
@@ -585,21 +524,12 @@ async function initCheckoutPage() {
       const policyAccepted = document.getElementById('co-policy')?.checked;
 
       if (!name || !phone || !address || (!paymentMethod && !hasPreOrder)) {
-        alert("Please complete all Details and select a payment protocol.");
-        return;
+        alert("Please fill in all layout properties."); return;
       }
-      
-      if ((paymentMethod === 'Bkash' || paymentMethod === 'Cash on Delivery' || hasPreOrder) && !txnId) {
-        alert("Transaction ID is required to verify your payment/delivery charge.");
-        return;
-      }
-      
-      if (!policyAccepted) {
-        alert("You must accept the Shipping & Return policies.");
-        return;
-      }
+      if (!txnId) { alert("Transaction ID required."); return; }
+      if (!policyAccepted) { alert("Please accept shipping policies."); return; }
 
-      btn.innerHTML = `<span class="material-symbols-outlined animate-spin">sync</span> PROCESSING...`;
+      btn.innerHTML = `PROCESSING...`;
       btn.disabled = true;
 
       const deliveryFee = calculateDeliveryFee(address);
@@ -607,48 +537,31 @@ async function initCheckoutPage() {
       let paid = 0, due = 0;
 
       if (hasPreOrder) {
-        paid = Math.round((subtotal * 0.25) / 5) * 5;
-        due = total - paid;
+        paid = Math.round((subtotal * 0.25) / 5) * 5; due = total - paid;
       } else if (paymentMethod === 'Bkash') {
-        paid = total;
-        due = 0;
+        paid = total; due = 0;
       } else if (paymentMethod === 'Cash on Delivery') {
-        paid = deliveryFee;
-        due = subtotal;
+        paid = deliveryFee; due = subtotal;
       }
 
       try {
         const orderData = {
           timeISO: new Date().toISOString(),
           items: checkoutItems.map(i => ({
-              productId: i.id,
-              productName: i.name,
-              color: i.color,
-              quantity: i.qty,
-              unitPrice: i.price,
-              wasPreOrder: i.isPreOrder
+              productId: i.id, productName: i.name, color: i.color, quantity: i.qty, unitPrice: i.price, wasPreOrder: i.isPreOrder
           })),
-          deliveryFee, total, paid, due,
-          customerName: name, phone, address,
+          deliveryFee, total, paid, due, customerName: name, phone, address,
           paymentMethod: paymentMethod || 'Bkash (Pre-Order)',
           paymentNumber: document.getElementById('co-merchant-number')?.textContent || BKASH_NUMBER,
-          transactionId: txnId.toUpperCase(),
-          status: 'Pending'
+          transactionId: txnId.toUpperCase(), status: 'Pending'
         };
 
         const docRef = await addDoc(collection(db, 'orders'), orderData);
-        
-        if (!singleProductId) {
-          localStorage.removeItem('cart');
-          updateCartUI();
-        }
-        
+        if (!singleProductId) { localStorage.removeItem('cart'); updateCartUI(); }
         showOrderConfirmation(docRef.id);
       } catch (err) {
-        console.error(err);
-        alert("Error generating order layout: " + err.message);
-        btn.innerHTML = `<span class="material-symbols-outlined">rocket_launch</span> Confirm Order`;
-        btn.disabled = false;
+        console.error(err); alert("Checkout pipeline failed: " + err.message);
+        btn.innerHTML = `Confirm Order`; btn.disabled = false;
       }
     });
   }
@@ -656,59 +569,118 @@ async function initCheckoutPage() {
 
 function showOrderConfirmation(orderId) {
   const modal = document.createElement('div');
-  modal.className = "fixed inset-0 z-[200] flex items-center justify-center p-6 bg-slate-950/90 backdrop-blur-md opacity-0 transition-opacity duration-500";
+  modal.className = "fixed inset-0 z-[200] flex items-center justify-center p-6 bg-slate-950/90 backdrop-blur-md";
   modal.innerHTML = `
-    <div class="bg-surface-container-high w-full max-w-sm rounded-2xl overflow-hidden border border-primary/20 shadow-2xl transform scale-95 transition-transform duration-500 text-center flex flex-col items-center p-10">
-      <div class="w-20 h-20 bg-primary/10 rounded-full flex items-center justify-center mb-6">
-        <span class="material-symbols-outlined text-5xl text-primary">verified</span>
-      </div>
-      <h2 class="font-headline text-3xl font-bold tracking-tighter text-on-surface mb-2">Transmission<br>Successful</h2>
-      <p class="text-outline text-sm mb-6 leading-relaxed">Dispatch manifest <span class="text-primary font-mono font-bold">#${orderId.slice(-6).toUpperCase()}</span> has been uploaded to the lattice.</p>
-      <button onclick="window.location.href='index.html'" class="w-full bg-primary text-white font-headline font-bold py-4 rounded-xl tracking-widest uppercase shadow-lg shadow-purple-500/20 active:scale-[0.98] transition-all">
-        Return to Base
-      </button>
+    <div class="bg-surface-container-high w-full max-w-sm rounded-2xl p-10 text-center border border-primary/20">
+      <h2 class="text-3xl font-bold text-on-surface mb-2">Order Confirmed</h2>
+      <p class="text-outline text-sm mb-6">Manifest ID: <span class="text-primary font-mono">#${orderId.slice(-6).toUpperCase()}</span></p>
+      <button onclick="window.location.href='index.html'" class="w-full bg-primary text-white py-4 rounded-xl font-bold uppercase">Return to Base</button>
     </div>
   `;
   document.body.appendChild(modal);
-  setTimeout(() => {
-    modal.classList.remove('opacity-0');
-    modal.querySelector('div')?.classList.remove('scale-95');
-  }, 50);
+}
+
+// ====== ADMIN ROUTER / ORDERS MODULE ======
+async function initAdminPage() {
+  const listContainer = document.getElementById('admin-orders-list');
+  if (!listContainer) return; // Exit cleanly if user is not browsing the admin site view
+
+  listContainer.innerHTML = `<div class="p-8 text-center text-outline">Synchronizing array logs...</div>`;
+
+  async function loadAndRenderOrders() {
+    try {
+      const qRef = query(collection(db, 'orders'), orderBy('timeISO', 'desc'));
+      const snap = await getDocs(qRef);
+      
+      if (snap.empty) {
+        listContainer.innerHTML = `<div class="p-8 text-center text-outline">No order manifests compiled in Firestore cloud database.</div>`;
+        return;
+      }
+
+      listContainer.innerHTML = '';
+      snap.forEach((orderDoc) => {
+        const o = orderDoc.data();
+        const oId = orderDoc.id;
+        const dateStr = o.timeISO ? new Date(o.timeISO).toLocaleString() : 'Legacy Log';
+
+        const div = document.createElement('div');
+        div.className = "bg-surface-container-low border border-white/5 p-6 rounded-2xl flex flex-col gap-4";
+        
+        let itemsSummary = (o.items || []).map(i => `${i.productName} (${i.color || 'Base'}) x${i.quantity}`).join(', ');
+
+        div.innerHTML = `
+          <div class="flex flex-wrap justify-between items-start gap-4 border-b border-white/5 pb-4">
+            <div>
+              <span class="text-xs font-mono bg-surface-container-highest text-primary px-3 py-1 rounded-full font-bold">#${oId.slice(-6).toUpperCase()}</span>
+              <h3 class="text-lg font-bold mt-2 text-on-surface">${o.customerName || 'Anonymous User'}</h3>
+              <p class="text-xs text-outline mt-0.5">${dateStr} | Tel: ${o.phone || '-'}</p>
+            </div>
+            <div class="flex items-center gap-3">
+              <select class="status-select bg-surface-container-lowest border border-white/10 text-on-surface text-sm rounded-xl px-3 py-2 font-bold focus:ring-1 focus:ring-primary outline-none transition-all">
+                <option value="Pending" ${o.status === 'Pending' ? 'selected' : ''}>Pending</option>
+                <option value="Confirmed" ${o.status === 'Confirmed' ? 'selected' : ''}>Confirmed</option>
+                <option value="Shipped" ${o.status === 'Shipped' ? 'selected' : ''}>Shipped</option>
+                <option value="Cancelled" ${o.status === 'Cancelled' ? 'selected' : ''}>Cancelled</option>
+              </select>
+            </div>
+          </div>
+          <div class="text-sm space-y-1 text-on-surface-variant">
+            <p><strong>Shipping Terminal Address:</strong> ${o.address || 'No location given.'}</p>
+            <p><strong>Item Manifest Summary:</strong> ${itemsSummary || 'Empty package log error.'}</p>
+            <p><strong>Payment Strategy:</strong> ${o.paymentMethod || 'Unchecked Protocol'} | Txn: <span class="font-mono text-primary font-bold">${o.transactionId || 'None'}</span></p>
+          </div>
+          <div class="bg-surface-container-lowest rounded-xl p-4 border border-white/5 flex justify-between items-center text-xs font-semibold">
+            <div>
+              <p class="text-emerald-400">Paid Amount: ৳${o.paid || 0}</p>
+              <p class="text-red-400 mt-0.5">Due Residuals: ৳${o.due || 0}</p>
+            </div>
+            <div class="flex gap-6 text-outline-variant">
+              <div class="text-right">Subtotal:<br>Delivery Charge:<br><strong class="text-on-surface text-sm mt-1 block">Total Revenue:</strong></div>
+              <div class="font-mono text-right">৳${o.subtotal || (o.total - o.deliveryFee)}<br>৳${o.deliveryFee}<br><strong class="text-primary text-sm mt-1 block">৳${o.total}</strong></div>
+            </div>
+          </div>
+        `;
+
+        div.querySelector('.status-select').addEventListener('change', async (e) => {
+          const newStatus = e.target.value;
+          try {
+            await updateDoc(doc(db, 'orders', oId), { status: newStatus });
+            loadAndRenderOrders();
+          } catch(err) { alert("Failed to update status: " + err.message); }
+        });
+
+        listContainer.appendChild(div);
+      });
+    } catch(err) {
+      listContainer.innerHTML = `<div class="p-8 text-center text-red-400">Error loading orders: Check if an Index is required by Firebase on 'timeISO'. ${err.message}</div>`;
+    }
+  }
+
+  loadAndRenderOrders();
 }
 
 // ====== GLOBAL INITIALIZATION ROUTER ======
 document.addEventListener('DOMContentLoaded', async () => {
-  // Always load products and update core metrics first
   await loadProducts();
 
   try {
     updateCartUI();
   } catch (err) {
-    console.error("Cart UI initialization skipped:", err);
+    console.warn("Cart component bypassed on current rendering page logic.");
   }
 
-  // TOP LEVEL UI EVENT LISTENERS (Optional chaining handles missing structural elements)
+  // TOP LEVEL GLOBAL UI NAVIGATION BINDINGS (Protected via Optional Chaining)
   document.getElementById('cart-link')?.addEventListener('click', () => {
     const slider = document.getElementById('cart-slider');
-    if (slider) {
-      slider.classList.remove('hidden');
-      slider.classList.remove('translate-x-full');
-    }
+    if (slider) { slider.classList.remove('hidden', 'translate-x-full'); }
   });
   
   document.getElementById('close-cart')?.addEventListener('click', () => {
-    const slider = document.getElementById('cart-slider');
-    if (slider) {
-      slider.classList.add('translate-x-full');
-    }
+    document.getElementById('cart-slider')?.classList.add('translate-x-full');
   });
   
   document.getElementById('checkout-cart')?.addEventListener('click', () => {
-    const cart = getCart();
-    if (cart.length === 0) {
-      alert('Your cart is empty!');
-      return;
-    }
+    if (getCart().length === 0) { alert('Your cart is empty!'); return; }
     window.location.href = 'checkout.html';
   });
 
@@ -716,7 +688,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('image-viewer')?.classList.add('hidden');
   });
 
-  // Call the legacy modal functions inside a safe environment to prevent system lockouts
+  // Call the legacy modal hookups safely inside a try-catch to keep execution moving
   try {
     if (typeof setupCartCheckoutModal === 'function') {
       setupCartCheckoutModal();
@@ -725,22 +697,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     console.warn("Cart Modal Hook omitted on this view context:", err);
   }
 
-  // PAGE LOGIC ROUTING (Isolated using error boundaries)
+  // PAGE CONDITIONAL DETECTOR ROUTING
   const isHome = !!document.getElementById('interest-products');
   const isProducts = !!document.getElementById('products-grid');
   const isProduct = !!document.getElementById('product-section') || window.location.pathname.includes('product.html');
   const isCheckoutPage = window.location.pathname.includes('checkout.html') || !!document.getElementById('co-items-list');
+  const isAdmin = !!document.getElementById('admin-orders-list');
 
-  if (isHome) {
-    try { await initHomePage(); } catch (err) { console.error("Home workflow error:", err); }
-  }
-  if (isProducts) {
-    try { await initProductsPage(); } catch (err) { console.error("Products catalog error:", err); }
-  }
-  if (isProduct) {
-    try { await initProductPage(); } catch (err) { console.error("Product detail view error:", err); }
-  }
-  if (isCheckoutPage) {
-    try { await initCheckoutPage(); } catch (err) { console.error("Checkout layout engine error:", err); }
-  }
+  if (isHome) { try { await initHomePage(); } catch (e) { console.error(e); } }
+  if (isProducts) { try { await initProductsPage(); } catch (e) { console.error(e); } }
+  if (isProduct) { try { await initProductPage(); } catch (e) { console.error(e); } }
+  if (isCheckoutPage) { try { await initCheckoutPage(); } catch (e) { console.error(e); } }
+  if (isAdmin) { try { await initAdminPage(); } catch (e) { console.error(e); } }
 });
