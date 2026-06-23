@@ -8,25 +8,35 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-// ====== GLOBAL EVENT: CROSS-PAGE SEARCH NAV ======
-document.addEventListener('DOMContentLoaded', () => {
-  const globalSearchInput = document.getElementById('global-search-input');
-  if (globalSearchInput) {
-    globalSearchInput.addEventListener('keypress', (e) => {
-      if (e.key === 'Enter' && globalSearchInput.value.trim() !== '') {
-        window.location.href = `products.html?search=${encodeURIComponent(globalSearchInput.value.trim())}`;
-      }
-    });
-  }
-});
+// ====== GLOBAL UTILS ======
+const productsMap = new Map();
 
-// ====== CART SYSTEM ======
-function getCart() {
-  const cart = localStorage.getItem('cart');
-  return cart ? JSON.parse(cart) : [];
+async function loadProducts() {
+  try {
+    const snapshot = await getDocs(collection(db, 'products'));
+    const products = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    productsMap.clear();
+    products.forEach(p => productsMap.set(p.id, p));
+    return products;
+  } catch (err) {
+    console.error('Error loading products:', err);
+    return [];
+  }
+}
+
+function shuffle(array) {
+  return array.slice().sort(() => Math.random() - 0.5);
+}
+
+function calculateDeliveryFee(address) {
+  const lowerAddr = address.toLowerCase();
+  if (lowerAddr.includes("savar")) return 70;
+  else if (lowerAddr.includes("dhaka")) return 110;
+  return 150;
 }
 
 // ====== ULTIMATE SPECIFICATION PARSER ======
+// (Used by both Storefront to display, and Admin to load existing specs for editing)
 function parseSpecsData(specData) {
   if (!specData) return {};
   if (typeof specData === 'object') return specData; 
@@ -46,18 +56,17 @@ function parseSpecsData(specData) {
 
     const specsObj = {};
 
-    // FORMAT 2: MULTI-LINE STRING (Easiest to parse)
+    // FORMAT 2: MULTI-LINE STRING
     if (str.includes('\n')) {
       const lines = str.split('\n');
       lines.forEach(line => {
         if (line.includes(':')) {
           const [k, ...v] = line.split(':');
-          const key = k.trim().replace(/[^a-zA-Z0-9\- ]/g, ''); // Clean odd characters
+          const key = k.trim().replace(/[^a-zA-Z0-9\- ]/g, ''); 
           let val = v.join(':').trim();
-          val = val.replace(/\?$/, '').trim(); // Remove trailing typos like ?
+          val = val.replace(/\?$/, '').trim(); 
           
           if (key && val) {
-            // Capitalize properly
             const properKey = key.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
             specsObj[properKey] = val;
           }
@@ -77,10 +86,8 @@ function parseSpecsData(specData) {
       "Software", "Warranty", "Lighting", "Actuation Force", "Bottom Out"
     ];
     
-    // Sort descending by length so "Printing Process" matches before "Printing"
     knownKeys.sort((a, b) => b.length - a.length);
 
-    // Escape keys for Regex and find all exact positions of "[Key]:"
     const escapedKeys = knownKeys.map(k => k.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')).join('|');
     const keyRegex = new RegExp(`\\b(${escapedKeys})\\s*:`, 'gi');
     
@@ -90,11 +97,10 @@ function parseSpecsData(specData) {
       matches.push({
         key: match[1].trim(),
         index: match.index,
-        end: match.index + match[0].length // where the value starts
+        end: match.index + match[0].length 
       });
     }
 
-    // If we found recognized keys, extract the text between them
     if (matches.length > 0) {
       for (let i = 0; i < matches.length; i++) {
         const currentMatch = matches[i];
@@ -104,7 +110,7 @@ function parseSpecsData(specData) {
         const valueEndIndex = nextMatch ? nextMatch.index : str.length;
         
         let value = str.substring(valueStartIndex, valueEndIndex).trim();
-        value = value.replace(/\?$/, '').trim(); // Clean trailing typos
+        value = value.replace(/\?$/, '').trim(); 
         
         const properKey = currentMatch.key.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
         if (value) specsObj[properKey] = value;
@@ -112,7 +118,7 @@ function parseSpecsData(specData) {
       return specsObj;
     }
 
-    // FALLBACK: If string is single-line but uses custom keys not in our list
+    // FALLBACK
     const fallbackParts = str.split(':');
     let currentKey = fallbackParts[0].split(' ').pop().trim();
     
@@ -130,6 +136,24 @@ function parseSpecsData(specData) {
     return specsObj;
   }
   return {};
+}
+
+// ====== GLOBAL EVENT: CROSS-PAGE SEARCH NAV ======
+document.addEventListener('DOMContentLoaded', () => {
+  const globalSearchInput = document.getElementById('global-search-input');
+  if (globalSearchInput) {
+    globalSearchInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter' && globalSearchInput.value.trim() !== '') {
+        window.location.href = `products.html?search=${encodeURIComponent(globalSearchInput.value.trim())}`;
+      }
+    });
+  }
+});
+
+// ====== CART SYSTEM ======
+function getCart() {
+  const cart = localStorage.getItem('cart');
+  return cart ? JSON.parse(cart) : [];
 }
 
 function saveCart(cart) {
@@ -227,32 +251,6 @@ function updateCartUI() {
   if (totalEl) totalEl.innerHTML = `<strong>Total: ৳${total}</strong>`;
 }
 
-const productsMap = new Map();
-
-async function loadProducts() {
-  try {
-    const snapshot = await getDocs(collection(db, 'products'));
-    const products = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-    productsMap.clear();
-    products.forEach(p => productsMap.set(p.id, p));
-    return products;
-  } catch (err) {
-    console.error('Error loading products:', err);
-    return [];
-  }
-}
-
-function shuffle(array) {
-  return array.slice().sort(() => Math.random() - 0.5);
-}
-
-function calculateDeliveryFee(address) {
-  const lowerAddr = address.toLowerCase();
-  if (lowerAddr.includes("savar")) return 70;
-  else if (lowerAddr.includes("dhaka")) return 110;
-  return 150;
-}
-
 function createProductCard(p, products) {
   const isUpcoming = p.availability === 'Upcoming';
   const isOOS = !isUpcoming && Number(p.stock) <= 0 && p.availability !== 'Pre Order';
@@ -303,7 +301,46 @@ function createProductCard(p, products) {
   return card;
 }
 
-// ====== PRODUCTS FILTER PAGE ======
+// ====== STOREFRONT ROUTES ======
+async function initHomePage() {
+  const productsContainer = document.getElementById('interest-products');
+  const products = await loadProducts();
+  if (products.length === 0) return;
+
+  const heroSection = document.getElementById('hero-section');
+  if (heroSection) {
+      const randomProduct = products[Math.floor(Math.random() * products.length)];
+      const titleParts = randomProduct.name.split(' ');
+      const p1 = titleParts.slice(0, 2).join(' ');
+      const p2 = titleParts.slice(2).join(' ') || 'EDITION';
+
+      if(document.getElementById('hero-tag')) document.getElementById('hero-tag').textContent = `Featured ${randomProduct.category || 'Gear'}`;
+      if(document.getElementById('hero-title')) {
+        document.getElementById('hero-title').innerHTML = `${p1} <br/><span class="text-transparent bg-clip-text bg-gradient-to-br from-primary to-primary-container">${p2}</span>`;
+        document.getElementById('hero-title').classList.remove('shimmer', 'text-transparent');
+      }
+      if(document.getElementById('hero-desc')) document.getElementById('hero-desc').textContent = randomProduct.description || "Experience premium mechanical artistry.";
+      
+      const imgEl = document.getElementById('hero-img');
+      if(imgEl && randomProduct.images && randomProduct.images[0]) {
+        imgEl.src = randomProduct.images[0];
+        imgEl.classList.remove('shimmer');
+      }
+      
+      const sameName = products.filter(other => other.name.toLowerCase() === randomProduct.name.toLowerCase());
+      let slug = randomProduct.name.toLowerCase().replace(/\s+/g, '-');
+      if (sameName.length > 1 && randomProduct.color) slug += '-' + randomProduct.color.toLowerCase().replace(/\s+/g, '-');
+      
+      if(document.getElementById('hero-link')) document.getElementById('hero-link').href = `product.html?slug=${slug}`;
+      heroSection.classList.remove('opacity-0');
+  }
+
+  if (productsContainer) {
+    productsContainer.innerHTML = ''; 
+    shuffle(products).slice(0, 8).forEach(p => productsContainer.appendChild(createProductCard(p, products)));
+  }
+}
+
 async function initProductsPage() {
   const container = document.getElementById('products-grid');
   const paginationContainer = document.getElementById('pagination-controls');
@@ -494,7 +531,6 @@ async function initProductsPage() {
   renderGrid();
 }
 
-// ====== PRODUCT DETAILS PAGE ======
 async function initProductPage() {
   const params = new URLSearchParams(window.location.search);
   const urlSlug = params.get('slug');
@@ -585,13 +621,11 @@ async function initProductPage() {
     document.getElementById('product-detailed-desc').innerHTML = product.detailedDescription || product.description || '<p>No detailed background information available.</p>';
   }
 
-  // Right Section: Clean UI Specification Table Engine
   const specsGrid = document.getElementById('product-specs-grid');
   if (specsGrid) {
     specsGrid.innerHTML = '';
     const parsedSpecs = parseSpecsData(product.specs);
     
-    // Check if the parser gave us detailed keys or just a general block of text
     if (Object.keys(parsedSpecs).length > 0 && !parsedSpecs["Details"]) {
       Object.entries(parsedSpecs).forEach(([key, value]) => {
         if (key.toLowerCase() !== 'id' && value.trim() !== '') {
@@ -603,10 +637,8 @@ async function initProductPage() {
         }
       });
     } else if (parsedSpecs["Details"]) {
-      // If it couldn't parse the format properly, print the entire block safely
       specsGrid.innerHTML = `<div class="text-slate-300 text-sm leading-relaxed">${parsedSpecs["Details"]}</div>`;
     } else {
-      // Absolute Fallback
       specsGrid.innerHTML = `
         <div class="flex justify-between items-center py-3 border-b border-white/5">
           <span class="text-slate-400 font-medium">Category</span>
@@ -621,46 +653,6 @@ async function initProductPage() {
     otherSection.innerHTML = '';
     const eligible = products.filter(p => p.availability !== 'Upcoming' && p.id !== product.id);
     shuffle(eligible).slice(0, 4).forEach(p => otherSection.appendChild(createProductCard(p, products)));
-  }
-}
-
-// ====== HOME & CHECKOUT PAGE INITIALIZERS ======
-async function initHomePage() {
-  const productsContainer = document.getElementById('interest-products');
-  const products = await loadProducts();
-  if (products.length === 0) return;
-
-  const heroSection = document.getElementById('hero-section');
-  if (heroSection) {
-      const randomProduct = products[Math.floor(Math.random() * products.length)];
-      const titleParts = randomProduct.name.split(' ');
-      const p1 = titleParts.slice(0, 2).join(' ');
-      const p2 = titleParts.slice(2).join(' ') || 'EDITION';
-
-      if(document.getElementById('hero-tag')) document.getElementById('hero-tag').textContent = `Featured ${randomProduct.category || 'Gear'}`;
-      if(document.getElementById('hero-title')) {
-        document.getElementById('hero-title').innerHTML = `${p1} <br/><span class="text-transparent bg-clip-text bg-gradient-to-br from-primary to-primary-container">${p2}</span>`;
-        document.getElementById('hero-title').classList.remove('shimmer', 'text-transparent');
-      }
-      if(document.getElementById('hero-desc')) document.getElementById('hero-desc').textContent = randomProduct.description || "Experience premium mechanical artistry.";
-      
-      const imgEl = document.getElementById('hero-img');
-      if(imgEl && randomProduct.images && randomProduct.images[0]) {
-        imgEl.src = randomProduct.images[0];
-        imgEl.classList.remove('shimmer');
-      }
-      
-      const sameName = products.filter(other => other.name.toLowerCase() === randomProduct.name.toLowerCase());
-      let slug = randomProduct.name.toLowerCase().replace(/\s+/g, '-');
-      if (sameName.length > 1 && randomProduct.color) slug += '-' + randomProduct.color.toLowerCase().replace(/\s+/g, '-');
-      
-      if(document.getElementById('hero-link')) document.getElementById('hero-link').href = `product.html?slug=${slug}`;
-      heroSection.classList.remove('opacity-0');
-  }
-
-  if (productsContainer) {
-    productsContainer.innerHTML = ''; 
-    shuffle(products).slice(0, 8).forEach(p => productsContainer.appendChild(createProductCard(p, products)));
   }
 }
 
@@ -833,6 +825,305 @@ function showOrderConfirmation(orderId) {
   setTimeout(() => { modal.classList.remove('opacity-0'); modal.querySelector('div').classList.remove('scale-95'); }, 50);
 }
 
+// ====== ADMIN ROUTES & LOGIC ======
+
+const statusExplanations = {
+  Pending: 'Order received, waiting for processing.',
+  Processing: 'Your order is being prepared.',
+  Dispatched: 'Your order has been shipped.',
+  Delivered: 'Your order has been delivered.',
+  Cancelled: 'Your order has been cancelled.'
+};
+
+const statusColors = {
+  Pending: '#eab308',
+  Processing: '#3b82f6',
+  Dispatched: '#a855f7',
+  Delivered: '#22c55e',
+  Cancelled: '#ef4444'
+};
+
+async function initAdminPanel() {
+  const loginSection = document.getElementById('login-section');
+  const dashboardSection = document.getElementById('dashboard-section');
+
+  onAuthStateChanged(auth, user => {
+    if (user) {
+      if(loginSection) loginSection.classList.add('hidden');
+      if(dashboardSection) dashboardSection.classList.remove('hidden');
+      // Which page are we on?
+      if (document.getElementById('inventory-tab')) setupInventoryAdmin();
+      if (document.getElementById('orders-tab')) setupOrdersAdmin();
+    } else {
+      if(loginSection) loginSection.classList.remove('hidden');
+      if(dashboardSection) dashboardSection.classList.add('hidden');
+    }
+  });
+
+  const loginForm = document.getElementById('login-form');
+  if (loginForm) {
+    loginForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const email = document.getElementById('email').value;
+      const pwd = document.getElementById('password').value;
+      try {
+        await signInWithEmailAndPassword(auth, email, pwd);
+      } catch (err) { alert(err.message); }
+    });
+  }
+
+  const logoutBtn = document.getElementById('logout-btn');
+  if(logoutBtn) {
+    logoutBtn.addEventListener('click', () => signOut(auth));
+  }
+}
+
+// ADMIN: INVENTORY (Add / Edit Products)
+async function setupInventoryAdmin() {
+  const form = document.getElementById('product-form');
+  const listContainer = document.getElementById('admin-products-list');
+  let editingId = null;
+  let products = await loadProducts();
+
+  // Switch tabs
+  document.getElementById('tab-add')?.addEventListener('click', () => {
+    document.getElementById('tab-add').classList.add('border-primary', 'text-primary');
+    document.getElementById('tab-add').classList.remove('border-transparent', 'text-slate-400');
+    document.getElementById('tab-manage').classList.remove('border-primary', 'text-primary');
+    document.getElementById('tab-manage').classList.add('border-transparent', 'text-slate-400');
+    
+    document.getElementById('view-add').classList.remove('hidden');
+    document.getElementById('view-manage').classList.add('hidden');
+    
+    editingId = null;
+    form.reset();
+    document.getElementById('form-title').textContent = 'Add New Product';
+    document.getElementById('submit-btn').innerHTML = '<span class="material-symbols-outlined">add_circle</span> Add Product';
+  });
+
+  document.getElementById('tab-manage')?.addEventListener('click', () => {
+    document.getElementById('tab-manage').classList.add('border-primary', 'text-primary');
+    document.getElementById('tab-manage').classList.remove('border-transparent', 'text-slate-400');
+    document.getElementById('tab-add').classList.remove('border-primary', 'text-primary');
+    document.getElementById('tab-add').classList.add('border-transparent', 'text-slate-400');
+    
+    document.getElementById('view-manage').classList.remove('hidden');
+    document.getElementById('view-add').classList.add('hidden');
+    renderAdminProductsList();
+  });
+
+  function renderAdminProductsList() {
+    if (!listContainer) return;
+    listContainer.innerHTML = '';
+    products.forEach(p => {
+      const div = document.createElement('div');
+      div.className = 'bg-surface-container-low p-4 rounded-xl border border-white/5 flex flex-col md:flex-row gap-4 items-center justify-between hover:border-primary/30 transition-colors';
+      div.innerHTML = `
+        <div class="flex items-center gap-4 w-full md:w-auto">
+          <img src="${p.images?.[0] || 'logo.png'}" class="w-16 h-16 rounded-lg object-cover bg-surface-variant">
+          <div>
+            <h4 class="font-bold text-on-surface truncate">${p.name}</h4>
+            <div class="text-xs text-outline font-mono">Stock: ${p.stock} | ৳${p.price}</div>
+          </div>
+        </div>
+        <div class="flex gap-2 w-full md:w-auto justify-end">
+          <button class="edit-btn px-4 py-2 bg-surface-variant hover:bg-surface-bright text-slate-200 text-xs rounded-lg font-bold uppercase transition-colors">Edit</button>
+          <button class="del-btn px-4 py-2 bg-red-900/30 hover:bg-red-900/50 text-red-400 text-xs rounded-lg font-bold uppercase transition-colors">Delete</button>
+        </div>
+      `;
+      
+      div.querySelector('.edit-btn').onclick = () => {
+        editingId = p.id;
+        document.getElementById('p-name').value = p.name || '';
+        document.getElementById('p-category').value = p.category || '';
+        document.getElementById('p-price').value = p.price || '';
+        document.getElementById('p-discount').value = p.discount || '0';
+        document.getElementById('p-stock').value = p.stock || '';
+        document.getElementById('p-color').value = p.color || '';
+        document.getElementById('p-availability').value = p.availability || 'In Stock';
+        document.getElementById('p-hot').checked = p.hotDeal || false;
+        
+        // Detailed textual fields
+        document.getElementById('p-desc').value = p.description || '';
+        document.getElementById('p-meta-desc').value = p.metaDescription || '';
+        document.getElementById('p-detailed-desc').value = p.detailedDescription || '';
+        
+        // Handle images array to string
+        document.getElementById('p-images').value = p.images ? p.images.join('\n') : '';
+
+        // Handle specs (Convert object back to string or display raw string)
+        if (typeof p.specs === 'object') {
+          document.getElementById('p-specs').value = Object.entries(p.specs).map(([k,v]) => `${k}: ${v}`).join('\n');
+        } else {
+          document.getElementById('p-specs').value = p.specs || '';
+        }
+
+        document.getElementById('form-title').textContent = 'Edit Product';
+        document.getElementById('submit-btn').innerHTML = '<span class="material-symbols-outlined">save</span> Save Changes';
+        document.getElementById('tab-add').click(); // Switch to form
+      };
+
+      div.querySelector('.del-btn').onclick = async () => {
+        if(confirm(`Delete ${p.name}?`)) {
+          await deleteDoc(doc(db, 'products', p.id));
+          products = await loadProducts();
+          renderAdminProductsList();
+        }
+      };
+      listContainer.appendChild(div);
+    });
+  }
+
+  if (form) {
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      
+      // Parse multi-line image URLs
+      const imagesRaw = document.getElementById('p-images').value.split('\n').map(s=>s.trim()).filter(Boolean);
+      
+      // We store specs exactly as the user formats them. The storefront will parse them on the fly.
+      // However, we format it cleanly before saving if we can.
+      const rawSpecs = document.getElementById('p-specs').value;
+
+      const data = {
+        name: document.getElementById('p-name').value,
+        category: document.getElementById('p-category').value,
+        price: Number(document.getElementById('p-price').value),
+        discount: Number(document.getElementById('p-discount').value),
+        stock: Number(document.getElementById('p-stock').value),
+        color: document.getElementById('p-color').value,
+        availability: document.getElementById('p-availability').value,
+        hotDeal: document.getElementById('p-hot').checked,
+        
+        description: document.getElementById('p-desc').value,
+        metaDescription: document.getElementById('p-meta-desc').value,
+        detailedDescription: document.getElementById('p-detailed-desc').value,
+        
+        images: imagesRaw,
+        specs: rawSpecs // Store as string. Storefront logic parses it safely.
+      };
+
+      try {
+        if (editingId) {
+          await updateDoc(doc(db, 'products', editingId), data);
+          alert('Updated!');
+        } else {
+          await addDoc(collection(db, 'products'), data);
+          alert('Added!');
+        }
+        form.reset();
+        editingId = null;
+        document.getElementById('form-title').textContent = 'Add New Product';
+        document.getElementById('submit-btn').innerHTML = '<span class="material-symbols-outlined">add_circle</span> Add Product';
+        
+        products = await loadProducts();
+      } catch(err) { alert(err.message); }
+    });
+  }
+}
+
+// ADMIN: ORDERS 
+async function setupOrdersAdmin() {
+  const listContainer = document.getElementById('orders-list');
+  if (!listContainer) return;
+
+  async function loadOrders() {
+    listContainer.innerHTML = '<div class="p-8 text-center text-slate-400"><span class="material-symbols-outlined animate-spin text-4xl">sync</span></div>';
+    try {
+      const q = query(collection(db, 'orders'), orderBy('timeISO', 'desc'));
+      const snap = await getDocs(q);
+      listContainer.innerHTML = '';
+      
+      if (snap.empty) {
+        listContainer.innerHTML = '<div class="p-8 text-center text-slate-500">No orders found.</div>';
+        return;
+      }
+
+      snap.forEach(docSnap => {
+        const o = docSnap.data();
+        const div = document.createElement('div');
+        div.className = 'bg-surface-container-low border border-white/5 rounded-2xl p-6 space-y-4 hover:border-white/10 transition-colors';
+        
+        const dateStr = new Date(o.timeISO).toLocaleString();
+        const itemsHtml = (o.items || []).map(i => `<div class="text-sm"><span class="font-bold">${i.quantity}x</span> ${i.productName} <span class="text-slate-500">(${i.color})</span></div>`).join('');
+        
+        div.innerHTML = `
+          <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-white/5 pb-4">
+            <div>
+              <div class="font-mono text-primary font-bold">#${docSnap.id.slice(-6).toUpperCase()}</div>
+              <div class="text-xs text-outline">${dateStr}</div>
+            </div>
+            <div class="flex items-center gap-3">
+              <select class="status-select bg-surface-container-lowest border border-white/10 rounded-lg px-3 py-1.5 text-sm" style="color: ${statusColors[o.status] || '#fff'}">
+                <option value="Pending" ${o.status==='Pending'?'selected':''}>Pending</option>
+                <option value="Processing" ${o.status==='Processing'?'selected':''}>Processing</option>
+                <option value="Dispatched" ${o.status==='Dispatched'?'selected':''}>Dispatched</option>
+                <option value="Delivered" ${o.status==='Delivered'?'selected':''}>Delivered</option>
+                <option value="Cancelled" ${o.status==='Cancelled'?'selected':''}>Cancelled</option>
+              </select>
+              <button class="save-status-btn px-4 py-1.5 bg-surface-variant hover:bg-surface-bright text-xs font-bold rounded-lg transition-colors hidden">Save</button>
+            </div>
+          </div>
+          
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div class="space-y-2">
+              <h4 class="text-[10px] uppercase tracking-widest text-outline">Customer Details</h4>
+              <div class="text-sm font-bold text-on-surface">${o.customerName}</div>
+              <div class="text-sm text-slate-300"><span class="material-symbols-outlined text-xs align-middle">call</span> ${o.phone}</div>
+              <div class="text-sm text-slate-400 bg-surface-container-lowest p-2 rounded-lg mt-1">${o.address}</div>
+            </div>
+            
+            <div class="space-y-2">
+              <h4 class="text-[10px] uppercase tracking-widest text-outline">Financials</h4>
+              <div class="text-sm flex justify-between"><span>Method:</span> <span class="font-bold">${o.paymentMethod}</span></div>
+              <div class="text-sm flex justify-between"><span>TXN ID:</span> <span class="font-mono text-primary">${o.transactionId || 'N/A'}</span></div>
+              <div class="text-sm flex justify-between text-green-400"><span>Paid:</span> <span>৳${o.paid}</span></div>
+              <div class="text-sm flex justify-between text-red-400"><span>Due:</span> <span>৳${o.due}</span></div>
+              <div class="text-sm flex justify-between font-bold border-t border-white/5 pt-1 mt-1"><span>Total:</span> <span>৳${o.total}</span></div>
+            </div>
+          </div>
+          
+          <div class="pt-4 border-t border-white/5">
+            <h4 class="text-[10px] uppercase tracking-widest text-outline mb-2">Manifest Items</h4>
+            <div class="space-y-1 bg-surface-container-lowest p-3 rounded-lg border border-white/5">
+              ${itemsHtml}
+            </div>
+          </div>
+        `;
+
+        const select = div.querySelector('.status-select');
+        const saveBtn = div.querySelector('.save-status-btn');
+
+        select.addEventListener('change', () => {
+          select.style.color = statusColors[select.value];
+          if (select.value !== o.status) saveBtn.classList.remove('hidden');
+          else saveBtn.classList.add('hidden');
+        });
+
+        saveBtn.addEventListener('click', async () => {
+          try {
+            saveBtn.innerHTML = '<span class="material-symbols-outlined animate-spin text-sm">sync</span>';
+            await updateDoc(doc(db, 'orders', docSnap.id), { status: select.value });
+            saveBtn.innerHTML = 'Saved';
+            setTimeout(() => saveBtn.classList.add('hidden'), 1500);
+            o.status = select.value; // update local state
+          } catch(e) {
+            alert(e.message);
+            saveBtn.innerHTML = 'Save';
+          }
+        });
+
+        listContainer.appendChild(div);
+      });
+    } catch(e) {
+      listContainer.innerHTML = `<div class="p-8 text-center text-red-400">${e.message}</div>`;
+    }
+  }
+
+  loadOrders();
+}
+
+
 // ====== GLOBAL INITIALIZATION ROUTER ======
 document.addEventListener('DOMContentLoaded', async () => {
   updateCartUI();
@@ -860,9 +1151,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   const isProducts = !!document.getElementById('products-grid');
   const isProduct = !!document.getElementById('product-section');
   const isCheckoutPage = window.location.pathname.includes('checkout.html');
+  const isAdmin = !!document.getElementById('login-section');
 
   if (isHome) await initHomePage();
   if (isProducts) await initProductsPage();
   if (isProduct) await initProductPage();
   if (isCheckoutPage) await initCheckoutPage();
+  if (isAdmin) await initAdminPanel();
 });
