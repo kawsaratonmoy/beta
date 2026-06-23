@@ -36,36 +36,24 @@ function calculateDeliveryFee(address) {
 }
 
 // ====== ULTIMATE SPECIFICATION PARSER ======
-// (Used by both Storefront to display, and Admin to load existing specs for editing)
 function parseSpecsData(specData) {
   if (!specData) return {};
   if (typeof specData === 'object') return specData; 
   
   if (typeof specData === 'string') {
     let str = specData.trim();
-    
-    // Check if it's already JSON
-    if (str.startsWith('{')) {
-      try { return JSON.parse(str); } catch(e) {}
-    }
-    
-    // Check if it even has colons
-    if (!str.includes(':')) {
-      return { "Details": str };
-    }
+    if (str.startsWith('{')) { try { return JSON.parse(str); } catch(e) {} }
+    if (!str.includes(':')) { return { "Details": str }; }
 
     const specsObj = {};
 
-    // FORMAT 2: MULTI-LINE STRING
     if (str.includes('\n')) {
       const lines = str.split('\n');
       lines.forEach(line => {
         if (line.includes(':')) {
           const [k, ...v] = line.split(':');
           const key = k.trim().replace(/[^a-zA-Z0-9\- ]/g, ''); 
-          let val = v.join(':').trim();
-          val = val.replace(/\?$/, '').trim(); 
-          
+          let val = v.join(':').trim().replace(/\?$/, '').trim(); 
           if (key && val) {
             const properKey = key.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
             specsObj[properKey] = val;
@@ -75,17 +63,14 @@ function parseSpecsData(specData) {
       return specsObj;
     }
 
-    // FORMAT 1: SINGLE CONTINUOUS LINE STRING
     const knownKeys = [
       "Material", "Legend", "Printing Process", "Key Count", "Profile", "Layout", 
       "Shine-Through", "Switch Type", "Switches", "Brand", "Model", "Connectivity", 
       "Backlight", "Battery Capacity", "Battery", "Interface", "Weight", "Size", 
       "Features", "Type", "Polling Rate", "Lifespan", "Hotswap", "Hot-swappable", 
       "Color", "Mounting Style", "Case Material", "Plate Material", "Stabilizers", 
-      "Compatibility", "Dimensions", "Keycaps", "System Support", "Cable Length", 
-      "Software", "Warranty", "Lighting", "Actuation Force", "Bottom Out"
+      "Compatibility", "Dimensions", "Keycaps", "System Support", "Cable Length"
     ];
-    
     knownKeys.sort((a, b) => b.length - a.length);
 
     const escapedKeys = knownKeys.map(k => k.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')).join('|');
@@ -94,34 +79,25 @@ function parseSpecsData(specData) {
     let matches = [];
     let match;
     while ((match = keyRegex.exec(str)) !== null) {
-      matches.push({
-        key: match[1].trim(),
-        index: match.index,
-        end: match.index + match[0].length 
-      });
+      matches.push({ key: match[1].trim(), index: match.index, end: match.index + match[0].length });
     }
 
     if (matches.length > 0) {
       for (let i = 0; i < matches.length; i++) {
         const currentMatch = matches[i];
         const nextMatch = matches[i + 1];
-        
         const valueStartIndex = currentMatch.end;
         const valueEndIndex = nextMatch ? nextMatch.index : str.length;
         
-        let value = str.substring(valueStartIndex, valueEndIndex).trim();
-        value = value.replace(/\?$/, '').trim(); 
-        
+        let value = str.substring(valueStartIndex, valueEndIndex).trim().replace(/\?$/, '').trim(); 
         const properKey = currentMatch.key.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
         if (value) specsObj[properKey] = value;
       }
       return specsObj;
     }
 
-    // FALLBACK
     const fallbackParts = str.split(':');
     let currentKey = fallbackParts[0].split(' ').pop().trim();
-    
     for (let i = 1; i < fallbackParts.length; i++) {
       let seg = fallbackParts[i].trim();
       if (i === fallbackParts.length - 1) {
@@ -164,24 +140,15 @@ function saveCart(cart) {
 window.addToCart = function(productId, qty = 1) {
   const product = productsMap.get(productId);
   if (!product || product.availability === 'Upcoming') return;
-
   const isOOS = Number(product.stock) <= 0 && product.availability !== 'Pre Order';
-  if (isOOS) {
-    alert('This product is out of stock!');
-    return;
-  }
+  if (isOOS) { alert('This product is out of stock!'); return; }
 
   let cart = getCart();
   const existing = cart.find(item => item.id === productId);
   const finalPrice = Number(product.discount) > 0 ? (Number(product.price) - Number(product.discount)) : Number(product.price);
 
-  if (existing) {
-    existing.qty += qty;
-  } else {
-    cart.push({
-      id: productId, name: product.name, color: product.color || '', price: finalPrice, image: product.images?.[0] || 'logo.png', qty: qty
-    });
-  }
+  if (existing) existing.qty += qty;
+  else cart.push({ id: productId, name: product.name, color: product.color || '', price: finalPrice, image: product.images?.[0] || 'logo.png', qty: qty, isPreOrder: product.availability === 'Pre Order' });
   saveCart(cart);
 }
 
@@ -301,7 +268,7 @@ function createProductCard(p, products) {
   return card;
 }
 
-// ====== STOREFRONT ROUTES ======
+// ====== PAGE ROUTES ======
 async function initHomePage() {
   const productsContainer = document.getElementById('interest-products');
   const products = await loadProducts();
@@ -596,6 +563,7 @@ async function initProductPage() {
   const metaDescEl = document.getElementById('product-meta-desc');
   if (metaDescEl) metaDescEl.textContent = product.metaDescription || product.description || 'No brief summary available for this item.';
 
+  // ====== CHECKOUT MODAL LOGIC RESTORATION ======
   const orderRow = document.getElementById('order-row');
   if (orderRow) {
     orderRow.innerHTML = '';
@@ -612,10 +580,128 @@ async function initProductPage() {
           Add to Cart
         </button>
       `;
-      document.getElementById('btn-buy-now').onclick = () => { window.location.href = `checkout.html?id=${product.id}`; };
+      
       document.getElementById('btn-add-cart').onclick = () => { window.addToCart(product.id); alert('Added to cart!'); };
+      
+      // Initialize Inline Direct Checkout Modal
+      document.getElementById('btn-buy-now').onclick = () => {
+        const modal = document.getElementById('checkout-modal');
+        if (!modal) { alert("Checkout modal missing in HTML."); return; }
+        
+        modal.classList.remove('hidden');
+        document.getElementById('co-product-id').value = product.id;
+        document.getElementById('co-unit-price-raw').value = finalPrice;
+        document.getElementById('co-available-stock').value = product.stock;
+        document.getElementById('co-product-name').value = product.name;
+        document.getElementById('co-color').value = product.color || 'Standard';
+        document.getElementById('co-price').value = finalPrice;
+        
+        updateDirectTotals(product.availability === 'Pre Order');
+      };
     }
   }
+
+  // Define global updater for direct modal
+  function updateDirectTotals(isPreOrder) {
+    const qty = Number(document.getElementById('co-qty')?.value || 1);
+    const unitPrice = Number(document.getElementById('co-unit-price-raw')?.value || 0);
+    const subtotal = qty * unitPrice;
+    const address = document.getElementById('co-address')?.value || '';
+    const delivery = calculateDeliveryFee(address);
+    const total = subtotal + delivery;
+    
+    if(document.getElementById('co-delivery')) document.getElementById('co-delivery').value = delivery;
+    if(document.getElementById('co-total')) document.getElementById('co-total').value = total;
+    
+    const method = document.getElementById('co-payment')?.value;
+    let payNow = 0, due = 0, num = '', note = '';
+
+    if (method === 'Bkash') {
+      payNow = total; due = 0; num = BKASH_NUMBER;
+      note = `Please Send Money ৳${payNow} to ${num} via bKash.`;
+    } else if (method === 'Cash on Delivery') {
+      payNow = delivery; due = subtotal; num = COD_NUMBER;
+      note = `Please Send Money ৳${payNow} (Delivery Fee) to ${num} to confirm COD order.`;
+    }
+
+    if (isPreOrder) {
+      payNow = Math.round((subtotal * 0.25) / 5) * 5;
+      due = total - payNow;
+      num = BKASH_NUMBER;
+      note = `PRE-ORDER: Please Send 25% Advance (৳${payNow}) to ${num} via bKash.`;
+      if (method === 'Cash on Delivery') {
+        note = "COD is not available for Pre-Orders. Select bKash.";
+        payNow = 0; due = 0; num = '';
+      }
+    }
+
+    if(document.getElementById('co-payment-number')) document.getElementById('co-payment-number').value = num;
+    if(document.getElementById('co-pay-now')) document.getElementById('co-pay-now').value = payNow;
+    if(document.getElementById('co-due-amount')) document.getElementById('co-due-amount').value = due;
+    if(document.getElementById('co-note')) document.getElementById('co-note').textContent = note;
+  }
+
+  // Hook listeners for direct checkout updates
+  ['co-qty', 'co-address', 'co-payment'].forEach(id => {
+    document.getElementById(id)?.addEventListener('input', () => updateDirectTotals(product.availability === 'Pre Order'));
+  });
+
+  document.getElementById('close-modal-btn')?.addEventListener('click', () => {
+    document.getElementById('checkout-modal').classList.add('hidden');
+  });
+
+  // Direct Form Submit Logic
+  document.getElementById('checkout-form')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const btn = document.getElementById('place-order-btn');
+    btn.disabled = true; btn.textContent = "Processing...";
+
+    const address = document.getElementById('co-address').value;
+    const method = document.getElementById('co-payment').value;
+    const isPreOrder = product.availability === 'Pre Order';
+    const delivery = calculateDeliveryFee(address);
+    const subtotal = Number(document.getElementById('co-qty').value) * finalPrice;
+    const total = subtotal + delivery;
+    let paid = 0, due = 0;
+
+    if (isPreOrder) { paid = Math.round((subtotal * 0.25) / 5) * 5; due = total - paid; }
+    else if (method === 'Bkash') { paid = total; due = 0; }
+    else if (method === 'Cash on Delivery') { paid = delivery; due = subtotal; }
+
+    const orderData = {
+      timeISO: new Date().toISOString(), // Fixed logic to retain original structure
+      items: [{
+        productId: product.id,
+        productName: product.name,
+        color: product.color || '',
+        quantity: Number(document.getElementById('co-qty').value),
+        unitPrice: finalPrice,
+        wasPreOrder: isPreOrder
+      }],
+      deliveryFee: delivery,
+      total: total,
+      paid: paid,
+      due: due,
+      customerName: document.getElementById('co-name').value,
+      phone: document.getElementById('co-phone').value,
+      address: address,
+      paymentMethod: method,
+      paymentNumber: document.getElementById('co-payment-number').value,
+      transactionId: document.getElementById('co-txn').value.toUpperCase(),
+      status: 'Pending Verification'
+    };
+
+    try {
+      await addDoc(collection(db, 'orders'), orderData);
+      document.getElementById('checkout-modal').classList.add('hidden');
+      alert("Order successfully placed!");
+      e.target.reset();
+    } catch (err) {
+      alert("Error: " + err.message);
+    }
+    btn.disabled = false; btn.textContent = "Place Order";
+  });
+
 
   if (document.getElementById('product-detailed-desc')) {
     document.getElementById('product-detailed-desc').innerHTML = product.detailedDescription || product.description || '<p>No detailed background information available.</p>';
@@ -637,198 +723,150 @@ async function initProductPage() {
         }
       });
     } else if (parsedSpecs["Details"]) {
-      specsGrid.innerHTML = `<div class="text-slate-300 whitespace-pre-line leading-relaxed">${parsedSpecs["Details"]}</div>`;
+      specsGrid.innerHTML = `<div class="text-slate-300 text-sm leading-relaxed">${parsedSpecs["Details"]}</div>`;
     } else {
-      specsGrid.innerHTML = `<div class="text-slate-500 py-4">No technical specifications provided.</div>`;
+      specsGrid.innerHTML = `
+        <div class="flex justify-between items-center py-3 border-b border-white/5">
+          <span class="text-slate-400 font-medium">Category</span>
+          <span class="font-display font-medium text-right text-slate-200">${product.category || 'N/A'}</span>
+        </div>
+      `;
     }
   }
 
-  const variantsContainer = document.getElementById('product-variants');
-  if (variantsContainer && product.color) {
-    const sameName = products.filter(other => other.name.toLowerCase() === product.name.toLowerCase() && other.color);
-    if (sameName.length > 1) {
-      document.getElementById('variants-section').classList.remove('hidden');
-      variantsContainer.innerHTML = sameName.map(v => {
-        let slug = v.name.toLowerCase().replace(/\s+/g, '-');
-        slug += '-' + v.color.toLowerCase().replace(/\s+/g, '-');
-        return `
-          <button onclick="window.location.href='product.html?slug=${slug}'" class="px-5 py-2.5 rounded-xl border-2 transition-all ${v.id === product.id ? 'border-primary bg-primary/10 text-primary' : 'border-outline-variant/30 text-outline hover:border-primary/50'} text-sm font-bold tracking-wide">
-            ${v.color}
-          </button>
-        `;
-      }).join('');
+  // Wrapped Other Products safely
+  try {
+    const otherSection = document.getElementById('other-products');
+    if (otherSection) {
+      otherSection.innerHTML = '';
+      const eligible = products.filter(p => p.availability !== 'Upcoming' && p.id !== product.id);
+      shuffle(eligible).slice(0, 4).forEach(p => otherSection.appendChild(createProductCard(p, products)));
     }
-  }
+  } catch(e) { console.error("Could not load other products", e); }
 }
 
-async function initCheckoutPage() {
-  const params = new URLSearchParams(window.location.search);
-  const singleId = params.get('id');
-  const cart = singleId ? null : getCart();
-  const summaryEl = document.getElementById('checkout-summary');
-  
-  if (!singleId && (!cart || cart.length === 0)) {
-    if(summaryEl) summaryEl.innerHTML = '<p class="text-outline">No items selected.</p>';
-    return;
-  }
-
-  let totalItemsCost = 0;
-  let itemsToOrder = [];
-  
-  if (summaryEl) summaryEl.innerHTML = '<div class="flex justify-center p-8"><span class="material-symbols-outlined animate-spin text-primary">sync</span></div>';
-
-  if (singleId) {
-    const product = productsMap.get(singleId);
-    if (product) {
-      const price = Number(product.discount) > 0 ? (Number(product.price) - Number(product.discount)) : Number(product.price);
-      totalItemsCost = price;
-      itemsToOrder.push({ id: product.id, name: product.name, color: product.color||'', price: price, qty: 1 });
-    }
-  } else {
-    itemsToOrder = cart;
-    totalItemsCost = cart.reduce((sum, item) => sum + (item.price * item.qty), 0);
-  }
-
-  function renderSummary() {
-    if (!summaryEl) return;
-    const addr = document.getElementById('c-address')?.value || '';
-    const deliveryFee = calculateDeliveryFee(addr);
-    const finalTotal = totalItemsCost + deliveryFee;
+// ====== MODAL CART CHECKOUT ======
+function setupCartCheckoutModal() {
+  document.getElementById('checkout-cart')?.addEventListener('click', () => {
+    const cart = getCart();
+    if (cart.length === 0) { alert('Your cart is empty!'); return; }
     
-    let html = '<div class="space-y-4 mb-6">';
-    itemsToOrder.forEach(item => {
-      html += `
-        <div class="flex justify-between text-sm">
-          <span class="text-on-surface truncate pr-4">${item.name} ${item.color ? `(${item.color})` : ''} x${item.qty}</span>
-          <span class="font-mono text-primary whitespace-nowrap">৳${item.price * item.qty}</span>
+    const cartModal = document.getElementById('cart-checkout-modal');
+    if (!cartModal) { alert("Cart checkout modal missing in HTML."); return; }
+
+    document.getElementById('cart-slider')?.classList.add('translate-x-full');
+    cartModal.classList.remove('hidden');
+
+    const itemsContainer = document.getElementById('cart-co-items');
+    let subtotal = 0;
+    let hasPreOrder = false;
+    itemsContainer.innerHTML = '';
+
+    cart.forEach(item => {
+      subtotal += item.price * item.qty;
+      if(item.isPreOrder) hasPreOrder = true;
+      itemsContainer.innerHTML += `
+        <div class="flex justify-between text-xs mb-1">
+          <span class="truncate pr-2">${item.name} (${item.color||'-'}) x${item.qty}</span>
+          <span class="font-bold">৳${item.price * item.qty}</span>
         </div>
       `;
     });
-    html += `</div>
-      <div class="border-t border-white/10 pt-4 space-y-2">
-        <div class="flex justify-between text-sm text-outline"><span>Subtotal</span> <span class="font-mono">৳${totalItemsCost}</span></div>
-        <div class="flex justify-between text-sm text-outline"><span>Delivery</span> <span class="font-mono">৳${deliveryFee}</span></div>
-        <div class="flex justify-between text-lg font-bold text-primary mt-4 pt-4 border-t border-white/5"><span>Total</span> <span class="font-mono">৳${finalTotal}</span></div>
-      </div>
-    `;
-    summaryEl.innerHTML = html;
-  }
-  
-  const addrInput = document.getElementById('c-address');
-  if(addrInput) addrInput.addEventListener('input', renderSummary);
-  renderSummary();
-
-  const form = document.getElementById('checkout-form');
-  if (form) {
-    form.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      
-      const addr = document.getElementById('c-address').value;
-      const paymentMethod = document.getElementById('c-payment').value;
-      const isBkash = paymentMethod === 'bkash';
-      const isCOD = paymentMethod === 'cod';
-      
-      const trxID = isBkash ? document.getElementById('c-trx').value : '';
-      const codAdvance = isCOD ? document.getElementById('c-cod-trx').value : '';
-      
-      if (isBkash && !trxID) { alert("Please provide bKash TrxID."); return; }
-      if (isCOD && !codAdvance) { alert("Please provide the TrxID for the ৳150 Advance Payment."); return; }
-
-      // Validate Stock before placing order
-      for (const item of itemsToOrder) {
-        const pRef = doc(db, 'products', item.id);
-        const pSnap = await getDoc(pRef);
-        if (pSnap.exists()) {
-          const pData = pSnap.data();
-          if (pData.availability !== 'Pre Order' && Number(pData.stock) < item.qty) {
-            alert(`Sorry, ${pData.name} only has ${pData.stock} left in stock.`);
-            return;
-          }
-        }
-      }
-
-      const orderData = {
-        customerName: document.getElementById('c-name').value,
-        phone: document.getElementById('c-phone').value,
-        address: addr,
-        facebook: document.getElementById('c-fb').value,
-        paymentMethod: paymentMethod,
-        trxID: isBkash ? trxID : codAdvance,
-        items: itemsToOrder,
-        subtotal: totalItemsCost,
-        deliveryFee: calculateDeliveryFee(addr),
-        total: totalItemsCost + calculateDeliveryFee(addr),
-        status: 'Pending Verification',
-        timestamp: new Date().toISOString()
-      };
-
-      try {
-        await addDoc(collection(db, 'orders'), orderData);
-        
-        // Deduct Stock
-        for (const item of itemsToOrder) {
-          const pRef = doc(db, 'products', item.id);
-          try {
-            await runTransaction(db, async (transaction) => {
-              const pDoc = await transaction.get(pRef);
-              if (pDoc.exists()) {
-                const currentStock = Number(pDoc.data().stock);
-                if (pDoc.data().availability !== 'Pre Order' && currentStock >= item.qty) {
-                   transaction.update(pRef, { stock: currentStock - item.qty });
-                }
-              }
-            });
-          } catch(err) { console.error("Stock update failed for", item.name, err); }
-        }
-
-        if (!singleId) { localStorage.removeItem('cart'); updateCartUI(); }
-        window.location.href = 'index.html?order_success=true';
-      } catch (err) {
-        alert("Error placing order: " + err.message);
-      }
-    });
-  }
-
-  const paymentSelect = document.getElementById('c-payment');
-  if(paymentSelect) {
-    paymentSelect.addEventListener('change', (e) => {
-      if (e.target.value === 'bkash') {
-        document.getElementById('bkash-info').classList.remove('hidden');
-        document.getElementById('c-trx').required = true;
-        document.getElementById('cod-info').classList.add('hidden');
-        document.getElementById('c-cod-trx').required = false;
-      } else {
-        document.getElementById('bkash-info').classList.add('hidden');
-        document.getElementById('c-trx').required = false;
-        document.getElementById('cod-info').classList.remove('hidden');
-        document.getElementById('c-cod-trx').required = true;
-      }
-    });
     
-    // Set static numbers from config
-    const codNumEl = document.getElementById('static-cod-number');
-    const bkashNumEl = document.getElementById('static-bkash-number');
-    if(codNumEl) codNumEl.textContent = COD_NUMBER;
-    if(bkashNumEl) bkashNumEl.textContent = BKASH_NUMBER;
-  }
-}
+    // Store states locally for updating
+    window.cartSubtotal = subtotal;
+    window.cartHasPreOrder = hasPreOrder;
+    updateCartTotals();
+  });
 
-function showOrderConfirmation() {
-  const params = new URLSearchParams(window.location.search);
-  if (params.get('order_success') === 'true') {
-    const modal = document.createElement('div');
-    modal.className = "fixed inset-0 bg-background/90 z-[100] flex items-center justify-center p-4 backdrop-blur-sm";
-    modal.innerHTML = `
-      <div class="bg-surface-container-low border border-primary/20 p-8 rounded-2xl max-w-md w-full text-center shadow-2xl relative overflow-hidden">
-        <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-primary to-primary-container"></div>
-        <span class="material-symbols-outlined text-6xl text-primary mb-4 block">check_circle</span>
-        <h2 class="text-2xl font-display font-bold mb-2">Manifest Received</h2>
-        <p class="text-outline text-sm mb-6 leading-relaxed">Your order has been encrypted and transmitted to our lab. We will process it shortly.</p>
-        <button onclick="this.parentElement.parentElement.remove(); window.history.replaceState({}, document.title, window.location.pathname);" class="px-6 py-3 bg-surface-variant hover:bg-surface-container border border-white/10 text-on-surface font-bold uppercase tracking-widest text-xs rounded-xl transition-all w-full">Acknowledge</button>
-      </div>
-    `;
-    document.body.appendChild(modal);
+  function updateCartTotals() {
+    const address = document.getElementById('cart-co-address')?.value || '';
+    const delivery = calculateDeliveryFee(address);
+    const total = window.cartSubtotal + delivery;
+    
+    if(document.getElementById('cart-co-delivery')) document.getElementById('cart-co-delivery').value = delivery;
+    if(document.getElementById('cart-co-total')) document.getElementById('cart-co-total').value = total;
+    
+    const method = document.getElementById('cart-co-payment')?.value;
+    let payNow = 0, due = 0, num = '', note = '';
+
+    if (method === 'Bkash') {
+      payNow = total; due = 0; num = BKASH_NUMBER;
+      note = `Please Send Money ৳${payNow} to ${num} via bKash.`;
+    } else if (method === 'Cash on Delivery') {
+      payNow = delivery; due = window.cartSubtotal; num = COD_NUMBER;
+      note = `Please Send Money ৳${payNow} (Delivery Fee) to ${num} to confirm COD order.`;
+    }
+
+    if (window.cartHasPreOrder) {
+      payNow = Math.round((window.cartSubtotal * 0.25) / 5) * 5;
+      due = total - payNow;
+      num = BKASH_NUMBER;
+      note = `PRE-ORDER: Please Send 25% Advance (৳${payNow}) to ${num} via bKash.`;
+      if (method === 'Cash on Delivery') {
+        note = "COD is not available for Pre-Orders. Select bKash.";
+        payNow = 0; due = 0; num = '';
+      }
+    }
+
+    if(document.getElementById('cart-co-payment-number')) document.getElementById('cart-co-payment-number').value = num;
+    if(document.getElementById('cart-co-pay-now')) document.getElementById('cart-co-pay-now').value = payNow;
+    if(document.getElementById('cart-co-due-amount')) document.getElementById('cart-co-due-amount').value = due;
+    if(document.getElementById('cart-co-note')) document.getElementById('cart-co-note').textContent = note;
   }
+
+  ['cart-co-address', 'cart-co-payment'].forEach(id => {
+    document.getElementById(id)?.addEventListener('input', updateCartTotals);
+  });
+
+  document.getElementById('cart-close-modal-btn')?.addEventListener('click', () => {
+    document.getElementById('cart-checkout-modal').classList.add('hidden');
+  });
+
+  document.getElementById('cart-checkout-form')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const btn = document.getElementById('cart-place-order-btn');
+    btn.disabled = true; btn.textContent = "Processing...";
+
+    const cart = getCart();
+    const address = document.getElementById('cart-co-address').value;
+    const method = document.getElementById('cart-co-payment').value;
+    const delivery = calculateDeliveryFee(address);
+    const total = window.cartSubtotal + delivery;
+    
+    let paid = 0, due = 0;
+    if (window.cartHasPreOrder) { paid = Math.round((window.cartSubtotal * 0.25) / 5) * 5; due = total - paid; }
+    else if (method === 'Bkash') { paid = total; due = 0; }
+    else if (method === 'Cash on Delivery') { paid = delivery; due = window.cartSubtotal; }
+
+    const formattedItems = cart.map(i => ({
+      productId: i.id, productName: i.name, color: i.color || '',
+      quantity: i.qty, unitPrice: i.price, wasPreOrder: i.isPreOrder
+    }));
+
+    const orderData = {
+      timeISO: new Date().toISOString(),
+      items: formattedItems,
+      deliveryFee: delivery,
+      total: total, paid: paid, due: due,
+      customerName: document.getElementById('cart-co-name').value,
+      phone: document.getElementById('cart-co-phone').value,
+      address: address,
+      paymentMethod: method,
+      paymentNumber: document.getElementById('cart-co-payment-number').value,
+      transactionId: document.getElementById('cart-co-txn').value.toUpperCase(),
+      status: 'Pending Verification'
+    };
+
+    try {
+      await addDoc(collection(db, 'orders'), orderData);
+      document.getElementById('cart-checkout-modal').classList.add('hidden');
+      localStorage.removeItem('cart'); updateCartUI();
+      alert("Cart Order successfully placed!");
+      e.target.reset();
+    } catch (err) { alert("Error: " + err.message); }
+    btn.disabled = false; btn.textContent = "Place Order";
+  });
 }
 
 // ====== ADMIN SYSTEM ======
@@ -858,7 +896,6 @@ async function initAdminPanel() {
       if(loginSection) loginSection.classList.add('hidden');
       if(dashboardSection) dashboardSection.classList.remove('hidden');
       if(logoutBtn) logoutBtn.classList.remove('hidden'); 
-      
       if (document.getElementById('inventory-tab')) setupInventoryAdmin();
       if (document.getElementById('orders-tab')) setupOrdersAdmin();
     } else {
@@ -874,18 +911,13 @@ async function initAdminPanel() {
       e.preventDefault();
       const email = document.getElementById('email').value;
       const pwd = document.getElementById('password').value;
-      try {
-        await signInWithEmailAndPassword(auth, email, pwd);
-      } catch (err) { alert(err.message); }
+      try { await signInWithEmailAndPassword(auth, email, pwd); } catch (err) { alert(err.message); }
     });
   }
 
-  if(logoutBtn) {
-    logoutBtn.addEventListener('click', () => signOut(auth));
-  }
+  if(logoutBtn) logoutBtn.addEventListener('click', () => signOut(auth));
 }
 
-// ADMIN: INVENTORY (Add / Edit Products)
 async function setupInventoryAdmin() {
   const form = document.getElementById('product-form');
   const listContainer = document.getElementById('admin-products-list');
@@ -910,13 +942,11 @@ async function setupInventoryAdmin() {
   }
 
   document.getElementById('tab-add')?.addEventListener('click', () => { switchToAddTab(true); });
-
   document.getElementById('tab-manage')?.addEventListener('click', () => {
     document.getElementById('tab-manage').classList.add('border-primary', 'text-primary');
     document.getElementById('tab-manage').classList.remove('border-transparent', 'text-slate-400');
     document.getElementById('tab-add').classList.remove('border-primary', 'text-primary');
     document.getElementById('tab-add').classList.add('border-transparent', 'text-slate-400');
-    
     document.getElementById('view-manage').classList.remove('hidden');
     document.getElementById('view-add').classList.add('hidden');
     renderAdminProductsList();
@@ -944,7 +974,6 @@ async function setupInventoryAdmin() {
       
       div.querySelector('.edit-btn').onclick = () => {
         switchToAddTab(false);
-        
         editingId = p.id;
         document.getElementById('p-name').value = p.name || '';
         document.getElementById('p-category').value = p.category || '';
@@ -954,7 +983,6 @@ async function setupInventoryAdmin() {
         document.getElementById('p-color').value = p.color || '';
         document.getElementById('p-availability').value = p.availability || 'In Stock';
         document.getElementById('p-hot').checked = p.hotDeal || false;
-        
         document.getElementById('p-desc').value = p.description || '';
         document.getElementById('p-meta-desc').value = p.metaDescription || '';
         document.getElementById('p-detailed-desc').value = p.detailedDescription || '';
@@ -965,7 +993,6 @@ async function setupInventoryAdmin() {
         } else {
           document.getElementById('p-specs').value = p.specs || '';
         }
-
         document.getElementById('form-title').textContent = 'Edit Product';
         document.getElementById('submit-btn').innerHTML = '<span class="material-symbols-outlined">save</span> Save Changes';
       };
@@ -984,10 +1011,7 @@ async function setupInventoryAdmin() {
   if (form) {
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
-      
       const imagesRaw = document.getElementById('p-images').value.split('\n').map(s=>s.trim()).filter(Boolean);
-      const rawSpecs = document.getElementById('p-specs').value;
-
       const data = {
         name: document.getElementById('p-name').value,
         category: document.getElementById('p-category').value,
@@ -1001,18 +1025,12 @@ async function setupInventoryAdmin() {
         metaDescription: document.getElementById('p-meta-desc').value,
         detailedDescription: document.getElementById('p-detailed-desc').value,
         images: imagesRaw,
-        specs: rawSpecs
+        specs: document.getElementById('p-specs').value
       };
 
       try {
-        if (editingId) {
-          await updateDoc(doc(db, 'products', editingId), data);
-          alert('Updated!');
-        } else {
-          await addDoc(collection(db, 'products'), data);
-          alert('Added!');
-        }
-        
+        if (editingId) { await updateDoc(doc(db, 'products', editingId), data); alert('Updated!'); } 
+        else { await addDoc(collection(db, 'products'), data); alert('Added!'); }
         products = await loadProducts();
         switchToAddTab(true); 
       } catch(err) { alert(err.message); }
@@ -1020,7 +1038,7 @@ async function setupInventoryAdmin() {
   }
 }
 
-// ADMIN: ORDERS
+// ADMIN: ORDERS FIX - Properly reading older `timeISO` keys and rendering gracefully
 async function setupOrdersAdmin() {
   const listContainer = document.getElementById('orders-list');
   if (!listContainer) return;
@@ -1028,7 +1046,8 @@ async function setupOrdersAdmin() {
   async function loadAndRenderOrders() {
     listContainer.innerHTML = '<div class="p-8 text-center text-outline"><span class="material-symbols-outlined animate-spin">sync</span></div>';
     try {
-      const q = query(collection(db, 'orders'), orderBy('timestamp', 'desc'));
+      // Changed query order to 'timeISO' to perfectly match how orders were originally generated
+      const q = query(collection(db, 'orders'), orderBy('timeISO', 'desc'));
       const snapshot = await getDocs(q);
       
       if (snapshot.empty) {
@@ -1040,14 +1059,17 @@ async function setupOrdersAdmin() {
       snapshot.forEach(documentSnapshot => {
         const o = documentSnapshot.data();
         const oId = documentSnapshot.id;
-        const date = new Date(o.timestamp).toLocaleString();
+        const dateString = o.timeISO ? new Date(o.timeISO).toLocaleString() : new Date().toLocaleString();
         
         const badgeClass = statusColors[o.status] || "bg-surface-variant text-slate-300";
-        const explanation = statusExplanations[o.status] || "";
 
         let itemsHtml = '';
-        o.items.forEach(i => {
-          itemsHtml += `<div class="text-sm"><span class="text-primary font-bold">x${i.qty}</span> ${i.name} ${i.color ? `(${i.color})` : ''}</div>`;
+        (o.items || []).forEach(i => {
+          // Fallback map so it supports old database entries AND new database entry formats safely
+          const qty = i.quantity || i.qty || 1;
+          const name = i.productName || i.name || 'Unknown Item';
+          const col = i.color ? `(${i.color})` : '';
+          itemsHtml += `<div class="text-sm"><span class="text-primary font-bold">x${qty}</span> ${name} ${col}</div>`;
         });
 
         const div = document.createElement('div');
@@ -1055,7 +1077,7 @@ async function setupOrdersAdmin() {
         div.innerHTML = `
           <div class="flex flex-col md:flex-row justify-between md:items-center gap-4 border-b border-white/5 pb-4">
             <div>
-              <div class="font-mono text-xs text-outline mb-1">ID: ${oId} | ${date}</div>
+              <div class="font-mono text-xs text-outline mb-1">ID: ${oId} | ${dateString}</div>
               <h3 class="font-bold text-lg">${o.customerName}</h3>
               <div class="text-sm text-outline flex items-center gap-3 mt-1">
                 <a href="tel:${o.phone}" class="hover:text-primary transition-colors flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">call</span> ${o.phone}</a>
@@ -1063,7 +1085,7 @@ async function setupOrdersAdmin() {
               </div>
             </div>
             <div class="flex flex-col items-end gap-2">
-              <span class="px-4 py-1 rounded-full text-xs font-bold border uppercase tracking-widest ${badgeClass}">${o.status}</span>
+              <span class="px-4 py-1 rounded-full text-xs font-bold border uppercase tracking-widest ${badgeClass}">${o.status || 'Pending'}</span>
               <select class="status-select bg-surface-container-low border border-white/10 rounded-lg text-xs px-2 py-1 focus:ring-0 focus:border-primary/50 text-slate-300">
                 <option value="Pending Verification" ${o.status==='Pending Verification'?'selected':''}>Pending Verification</option>
                 <option value="Processing" ${o.status==='Processing'?'selected':''}>Processing</option>
@@ -1080,8 +1102,8 @@ async function setupOrdersAdmin() {
               <p class="text-sm text-slate-200 leading-relaxed">${o.address}</p>
             </div>
             <div>
-              <h4 class="text-xs uppercase tracking-widest text-outline mb-2">Payment Details (${o.paymentMethod.toUpperCase()})</h4>
-              <p class="text-sm font-mono text-primary bg-primary/10 px-3 py-1.5 rounded-lg border border-primary/20 w-fit">TrxID: ${o.trxID}</p>
+              <h4 class="text-xs uppercase tracking-widest text-outline mb-2">Payment Details (${o.paymentMethod?.toUpperCase() || 'N/A'})</h4>
+              <p class="text-sm font-mono text-primary bg-primary/10 px-3 py-1.5 rounded-lg border border-primary/20 w-fit">TrxID: ${o.transactionId || o.trxID || 'N/A'}</p>
             </div>
           </div>
 
@@ -1090,7 +1112,7 @@ async function setupOrdersAdmin() {
             <div class="space-y-2 mb-4 bg-surface-container-low p-4 rounded-xl border border-white/5">${itemsHtml}</div>
             <div class="flex justify-end gap-6 text-sm">
               <div class="text-outline text-right">Subtotal:<br>Delivery:<br><strong class="text-on-surface text-lg mt-1 block">Total:</strong></div>
-              <div class="font-mono text-right">৳${o.subtotal}<br>৳${o.deliveryFee}<br><strong class="text-primary text-lg mt-1 block">৳${o.total}</strong></div>
+              <div class="font-mono text-right">৳${o.subtotal || (o.total - o.deliveryFee)}<br>৳${o.deliveryFee}<br><strong class="text-primary text-lg mt-1 block">৳${o.total}</strong></div>
             </div>
           </div>
         `;
@@ -1106,7 +1128,7 @@ async function setupOrdersAdmin() {
         listContainer.appendChild(div);
       });
     } catch(err) {
-      listContainer.innerHTML = `<div class="p-8 text-center text-red-400">Error loading orders: ${err.message}</div>`;
+      listContainer.innerHTML = `<div class="p-8 text-center text-red-400">Error loading orders: Check if an Index is required by Firebase on 'timeISO'. ${err.message}</div>`;
     }
   }
 
@@ -1117,13 +1139,10 @@ async function setupOrdersAdmin() {
 document.addEventListener('DOMContentLoaded', async () => {
   await loadProducts();
   updateCartUI();
+  setupCartCheckoutModal(); // Call the cart modal hookups globally
 
-  // Route based on what elements exist
   if (document.getElementById('interest-products')) initHomePage();
   if (document.getElementById('products-grid')) initProductsPage();
   if (document.getElementById('product-section')) initProductPage();
-  if (document.getElementById('checkout-form')) initCheckoutPage();
   if (document.getElementById('login-form')) initAdminPanel();
-  
-  showOrderConfirmation();
 });
