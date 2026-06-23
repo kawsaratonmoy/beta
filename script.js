@@ -846,17 +846,20 @@ const statusColors = {
 async function initAdminPanel() {
   const loginSection = document.getElementById('login-section');
   const dashboardSection = document.getElementById('dashboard-section');
+  const logoutBtn = document.getElementById('logout-btn'); // Grab the logout button
 
   onAuthStateChanged(auth, user => {
     if (user) {
       if(loginSection) loginSection.classList.add('hidden');
       if(dashboardSection) dashboardSection.classList.remove('hidden');
-      // Which page are we on?
+      if(logoutBtn) logoutBtn.classList.remove('hidden'); // Show logout when logged in
+      
       if (document.getElementById('inventory-tab')) setupInventoryAdmin();
       if (document.getElementById('orders-tab')) setupOrdersAdmin();
     } else {
       if(loginSection) loginSection.classList.remove('hidden');
       if(dashboardSection) dashboardSection.classList.add('hidden');
+      if(logoutBtn) logoutBtn.classList.add('hidden'); // Hide logout when logged out
     }
   });
 
@@ -872,7 +875,6 @@ async function initAdminPanel() {
     });
   }
 
-  const logoutBtn = document.getElementById('logout-btn');
   if(logoutBtn) {
     logoutBtn.addEventListener('click', () => signOut(auth));
   }
@@ -885,8 +887,8 @@ async function setupInventoryAdmin() {
   let editingId = null;
   let products = await loadProducts();
 
-  // Switch tabs
-  document.getElementById('tab-add')?.addEventListener('click', () => {
+  // Helper function to switch tabs safely without resetting data
+  function switchToAddTab(isResetting = true) {
     document.getElementById('tab-add').classList.add('border-primary', 'text-primary');
     document.getElementById('tab-add').classList.remove('border-transparent', 'text-slate-400');
     document.getElementById('tab-manage').classList.remove('border-primary', 'text-primary');
@@ -895,10 +897,17 @@ async function setupInventoryAdmin() {
     document.getElementById('view-add').classList.remove('hidden');
     document.getElementById('view-manage').classList.add('hidden');
     
-    editingId = null;
-    form.reset();
-    document.getElementById('form-title').textContent = 'Add New Product';
-    document.getElementById('submit-btn').innerHTML = '<span class="material-symbols-outlined">add_circle</span> Add Product';
+    if (isResetting) {
+      editingId = null;
+      form.reset();
+      document.getElementById('form-title').textContent = 'Add New Product';
+      document.getElementById('submit-btn').innerHTML = '<span class="material-symbols-outlined">add_circle</span> Add Product';
+    }
+  }
+
+  // Normal clicking of the "Add Product" tab resets the form
+  document.getElementById('tab-add')?.addEventListener('click', () => {
+    switchToAddTab(true); 
   });
 
   document.getElementById('tab-manage')?.addEventListener('click', () => {
@@ -933,7 +942,10 @@ async function setupInventoryAdmin() {
       `;
       
       div.querySelector('.edit-btn').onclick = () => {
-        editingId = p.id;
+        // Switch view first WITHOUT resetting
+        switchToAddTab(false);
+        
+        editingId = p.id; // Assign ID
         document.getElementById('p-name').value = p.name || '';
         document.getElementById('p-category').value = p.category || '';
         document.getElementById('p-price').value = p.price || '';
@@ -943,15 +955,11 @@ async function setupInventoryAdmin() {
         document.getElementById('p-availability').value = p.availability || 'In Stock';
         document.getElementById('p-hot').checked = p.hotDeal || false;
         
-        // Detailed textual fields
         document.getElementById('p-desc').value = p.description || '';
         document.getElementById('p-meta-desc').value = p.metaDescription || '';
         document.getElementById('p-detailed-desc').value = p.detailedDescription || '';
-        
-        // Handle images array to string
         document.getElementById('p-images').value = p.images ? p.images.join('\n') : '';
 
-        // Handle specs (Convert object back to string or display raw string)
         if (typeof p.specs === 'object') {
           document.getElementById('p-specs').value = Object.entries(p.specs).map(([k,v]) => `${k}: ${v}`).join('\n');
         } else {
@@ -960,7 +968,6 @@ async function setupInventoryAdmin() {
 
         document.getElementById('form-title').textContent = 'Edit Product';
         document.getElementById('submit-btn').innerHTML = '<span class="material-symbols-outlined">save</span> Save Changes';
-        document.getElementById('tab-add').click(); // Switch to form
       };
 
       div.querySelector('.del-btn').onclick = async () => {
@@ -978,11 +985,7 @@ async function setupInventoryAdmin() {
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
       
-      // Parse multi-line image URLs
       const imagesRaw = document.getElementById('p-images').value.split('\n').map(s=>s.trim()).filter(Boolean);
-      
-      // We store specs exactly as the user formats them. The storefront will parse them on the fly.
-      // However, we format it cleanly before saving if we can.
       const rawSpecs = document.getElementById('p-specs').value;
 
       const data = {
@@ -994,13 +997,11 @@ async function setupInventoryAdmin() {
         color: document.getElementById('p-color').value,
         availability: document.getElementById('p-availability').value,
         hotDeal: document.getElementById('p-hot').checked,
-        
         description: document.getElementById('p-desc').value,
         metaDescription: document.getElementById('p-meta-desc').value,
         detailedDescription: document.getElementById('p-detailed-desc').value,
-        
         images: imagesRaw,
-        specs: rawSpecs // Store as string. Storefront logic parses it safely.
+        specs: rawSpecs
       };
 
       try {
@@ -1011,151 +1012,11 @@ async function setupInventoryAdmin() {
           await addDoc(collection(db, 'products'), data);
           alert('Added!');
         }
-        form.reset();
-        editingId = null;
-        document.getElementById('form-title').textContent = 'Add New Product';
-        document.getElementById('submit-btn').innerHTML = '<span class="material-symbols-outlined">add_circle</span> Add Product';
         
+        // Refresh products and reset UI
         products = await loadProducts();
+        switchToAddTab(true); 
       } catch(err) { alert(err.message); }
     });
   }
 }
-
-// ADMIN: ORDERS 
-async function setupOrdersAdmin() {
-  const listContainer = document.getElementById('orders-list');
-  if (!listContainer) return;
-
-  async function loadOrders() {
-    listContainer.innerHTML = '<div class="p-8 text-center text-slate-400"><span class="material-symbols-outlined animate-spin text-4xl">sync</span></div>';
-    try {
-      const q = query(collection(db, 'orders'), orderBy('timeISO', 'desc'));
-      const snap = await getDocs(q);
-      listContainer.innerHTML = '';
-      
-      if (snap.empty) {
-        listContainer.innerHTML = '<div class="p-8 text-center text-slate-500">No orders found.</div>';
-        return;
-      }
-
-      snap.forEach(docSnap => {
-        const o = docSnap.data();
-        const div = document.createElement('div');
-        div.className = 'bg-surface-container-low border border-white/5 rounded-2xl p-6 space-y-4 hover:border-white/10 transition-colors';
-        
-        const dateStr = new Date(o.timeISO).toLocaleString();
-        const itemsHtml = (o.items || []).map(i => `<div class="text-sm"><span class="font-bold">${i.quantity}x</span> ${i.productName} <span class="text-slate-500">(${i.color})</span></div>`).join('');
-        
-        div.innerHTML = `
-          <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-white/5 pb-4">
-            <div>
-              <div class="font-mono text-primary font-bold">#${docSnap.id.slice(-6).toUpperCase()}</div>
-              <div class="text-xs text-outline">${dateStr}</div>
-            </div>
-            <div class="flex items-center gap-3">
-              <select class="status-select bg-surface-container-lowest border border-white/10 rounded-lg px-3 py-1.5 text-sm" style="color: ${statusColors[o.status] || '#fff'}">
-                <option value="Pending" ${o.status==='Pending'?'selected':''}>Pending</option>
-                <option value="Processing" ${o.status==='Processing'?'selected':''}>Processing</option>
-                <option value="Dispatched" ${o.status==='Dispatched'?'selected':''}>Dispatched</option>
-                <option value="Delivered" ${o.status==='Delivered'?'selected':''}>Delivered</option>
-                <option value="Cancelled" ${o.status==='Cancelled'?'selected':''}>Cancelled</option>
-              </select>
-              <button class="save-status-btn px-4 py-1.5 bg-surface-variant hover:bg-surface-bright text-xs font-bold rounded-lg transition-colors hidden">Save</button>
-            </div>
-          </div>
-          
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div class="space-y-2">
-              <h4 class="text-[10px] uppercase tracking-widest text-outline">Customer Details</h4>
-              <div class="text-sm font-bold text-on-surface">${o.customerName}</div>
-              <div class="text-sm text-slate-300"><span class="material-symbols-outlined text-xs align-middle">call</span> ${o.phone}</div>
-              <div class="text-sm text-slate-400 bg-surface-container-lowest p-2 rounded-lg mt-1">${o.address}</div>
-            </div>
-            
-            <div class="space-y-2">
-              <h4 class="text-[10px] uppercase tracking-widest text-outline">Financials</h4>
-              <div class="text-sm flex justify-between"><span>Method:</span> <span class="font-bold">${o.paymentMethod}</span></div>
-              <div class="text-sm flex justify-between"><span>TXN ID:</span> <span class="font-mono text-primary">${o.transactionId || 'N/A'}</span></div>
-              <div class="text-sm flex justify-between text-green-400"><span>Paid:</span> <span>৳${o.paid}</span></div>
-              <div class="text-sm flex justify-between text-red-400"><span>Due:</span> <span>৳${o.due}</span></div>
-              <div class="text-sm flex justify-between font-bold border-t border-white/5 pt-1 mt-1"><span>Total:</span> <span>৳${o.total}</span></div>
-            </div>
-          </div>
-          
-          <div class="pt-4 border-t border-white/5">
-            <h4 class="text-[10px] uppercase tracking-widest text-outline mb-2">Manifest Items</h4>
-            <div class="space-y-1 bg-surface-container-lowest p-3 rounded-lg border border-white/5">
-              ${itemsHtml}
-            </div>
-          </div>
-        `;
-
-        const select = div.querySelector('.status-select');
-        const saveBtn = div.querySelector('.save-status-btn');
-
-        select.addEventListener('change', () => {
-          select.style.color = statusColors[select.value];
-          if (select.value !== o.status) saveBtn.classList.remove('hidden');
-          else saveBtn.classList.add('hidden');
-        });
-
-        saveBtn.addEventListener('click', async () => {
-          try {
-            saveBtn.innerHTML = '<span class="material-symbols-outlined animate-spin text-sm">sync</span>';
-            await updateDoc(doc(db, 'orders', docSnap.id), { status: select.value });
-            saveBtn.innerHTML = 'Saved';
-            setTimeout(() => saveBtn.classList.add('hidden'), 1500);
-            o.status = select.value; // update local state
-          } catch(e) {
-            alert(e.message);
-            saveBtn.innerHTML = 'Save';
-          }
-        });
-
-        listContainer.appendChild(div);
-      });
-    } catch(e) {
-      listContainer.innerHTML = `<div class="p-8 text-center text-red-400">${e.message}</div>`;
-    }
-  }
-
-  loadOrders();
-}
-
-
-// ====== GLOBAL INITIALIZATION ROUTER ======
-document.addEventListener('DOMContentLoaded', async () => {
-  updateCartUI();
-
-  document.getElementById('cart-link')?.addEventListener('click', () => {
-    const slider = document.getElementById('cart-slider');
-    if (slider) { slider.classList.remove('hidden'); slider.classList.remove('translate-x-full'); }
-  });
-  
-  document.getElementById('close-cart')?.addEventListener('click', () => {
-    const slider = document.getElementById('cart-slider');
-    if (slider) slider.classList.add('translate-x-full');
-  });
-  
-  document.getElementById('checkout-cart')?.addEventListener('click', () => {
-    if (getCart().length === 0) { alert('Your cart is empty!'); return; }
-    window.location.href = 'checkout.html';
-  });
-
-  document.getElementById('close-viewer')?.addEventListener('click', () => {
-    document.getElementById('image-viewer')?.classList.add('hidden');
-  });
-
-  const isHome = !!document.getElementById('interest-products');
-  const isProducts = !!document.getElementById('products-grid');
-  const isProduct = !!document.getElementById('product-section');
-  const isCheckoutPage = window.location.pathname.includes('checkout.html');
-  const isAdmin = !!document.getElementById('login-section');
-
-  if (isHome) await initHomePage();
-  if (isProducts) await initProductsPage();
-  if (isProduct) await initProductPage();
-  if (isCheckoutPage) await initCheckoutPage();
-  if (isAdmin) await initAdminPanel();
-});
