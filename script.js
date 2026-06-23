@@ -1075,8 +1075,9 @@ async function setupInventoryAdmin() {
     });
   }
 
+  // ====== FIXED: CHANGED TO THE PROPERTY ASSIGNMENT (.onsubmit) ======
   if (form) {
-    form.addEventListener('submit', async (e) => {
+    form.onsubmit = async (e) => {
       e.preventDefault();
       const imagesRaw = document.getElementById('p-images').value.split('\n').map(s=>s.trim()).filter(Boolean);
       const data = {
@@ -1101,7 +1102,7 @@ async function setupInventoryAdmin() {
         products = await loadProducts(true);
         switchToAddTab(true); 
       } catch(err) { alert(err.message); }
-    });
+    };
   }
 }
 
