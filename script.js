@@ -140,15 +140,29 @@ function saveCart(cart) {
 window.addToCart = function(productId, qty = 1) {
   const product = productsMap.get(productId);
   if (!product || product.availability === 'Upcoming') return;
-  const isOOS = Number(product.stock) <= 0 && product.availability !== 'Pre Order';
+  
+  const isPreOrder = product.availability === 'Pre Order';
+  const isOOS = Number(product.stock) <= 0 && !isPreOrder;
   if (isOOS) { alert('This product is out of stock!'); return; }
 
   let cart = getCart();
   const existing = cart.find(item => item.id === productId);
   const finalPrice = Number(product.discount) > 0 ? (Number(product.price) - Number(product.discount)) : Number(product.price);
 
-  if (existing) existing.qty += qty;
-  else cart.push({ id: productId, name: product.name, color: product.color || '', price: finalPrice, image: product.images?.[0] || 'logo.png', qty: qty, isPreOrder: product.availability === 'Pre Order' });
+  if (existing) {
+    const newQty = existing.qty + qty;
+    if (!isPreOrder && newQty > Number(product.stock)) {
+      alert(`Limit reached! Only ${product.stock} available in stock.`);
+      return;
+    }
+    existing.qty = newQty;
+  } else {
+    if (!isPreOrder && qty > Number(product.stock)) {
+      alert(`Limit reached! Only ${product.stock} available in stock.`);
+      return;
+    }
+    cart.push({ id: productId, name: product.name, color: product.color || '', price: finalPrice, image: product.images?.[0] || 'logo.png', qty: qty, isPreOrder: isPreOrder });
+  }
   saveCart(cart);
 }
 
@@ -209,8 +223,19 @@ function updateCartUI() {
         </div>
       </div>
     `;
+    
     div.querySelector('.qty-minus').addEventListener('click', () => updateCartQuantity(item.id, item.qty - 1));
-    div.querySelector('.qty-plus').addEventListener('click', () => updateCartQuantity(item.id, item.qty + 1));
+    
+    // Check stock limit on increment
+    div.querySelector('.qty-plus').addEventListener('click', () => {
+      const product = productsMap.get(item.id);
+      if (product && product.availability !== 'Pre Order' && (item.qty + 1) > Number(product.stock)) {
+        alert(`Only ${product.stock} units available in stock.`);
+        return;
+      }
+      updateCartQuantity(item.id, item.qty + 1);
+    });
+
     div.querySelector('.remove-btn').addEventListener('click', () => removeFromCart(item.id));
     itemsContainer.appendChild(div);
   });
@@ -628,7 +653,7 @@ async function initProductPage() {
   } catch(e) { console.error("Could not load other products", e); }
 }
 
-// ====== DEDICATED CHECKOUT ENGINE ======
+// ====== DEDICATED CHECKOUT ENGINE (WITH TRANSACTION & STOCK DEDUCTION) ======
 async function initCheckoutPage() {
   const urlParams = new URLSearchParams(window.location.search);
   const singleProductId = urlParams.get('id');
@@ -813,17 +838,57 @@ async function initCheckoutPage() {
           status: 'Pending Verification'
         };
 
-        const docRef = await addDoc(collection(db, 'orders'), orderData);
+        let generatedOrderId = '';
+
+        // Execute Transaction to strictly verify and deduct stock on backend
+        await runTransaction(db, async (transaction) => {
+          // Phase 1: Fetch documents securely within transaction
+          const productRefs = checkoutItems.map(item => doc(db, 'products', item.id));
+          const productSnaps = await Promise.all(productRefs.map(ref => transaction.get(ref)));
+
+          // Phase 2: Validate Stock against all items requested
+          for (let i = 0; i < checkoutItems.length; i++) {
+            const snap = productSnaps[i];
+            if (!snap.exists()) throw new Error(`Inventory mismatch: Product ${checkoutItems[i].name} does not exist in backend.`);
+
+            const data = snap.data();
+            const currentStock = Number(data.stock);
+            const item = checkoutItems[i];
+
+            // If the item has a finite stock limitation and is NOT a pre-order, verify if we can fulfill it.
+            if (currentStock !== -1 && data.availability !== 'Pre Order' && currentStock < item.qty) {
+              throw new Error(`Insufficient stock for ${item.name}. Only ${currentStock} left available.`);
+            }
+          }
+
+          // Phase 3: Deduct the stock safely for all valid requested quantities
+          for (let i = 0; i < checkoutItems.length; i++) {
+            const snap = productSnaps[i];
+            const data = snap.data();
+            const currentStock = Number(data.stock);
+            const item = checkoutItems[i];
+
+            if (currentStock !== -1 && data.availability !== 'Pre Order') {
+              transaction.update(productRefs[i], { stock: currentStock - item.qty });
+            }
+          }
+
+          // Phase 4: Commit Order Registration
+          const newOrderRef = doc(collection(db, 'orders'));
+          transaction.set(newOrderRef, orderData);
+          generatedOrderId = newOrderRef.id;
+        });
         
+        // Remove items from local cart if we were utilizing the cart view to checkout
         if (!singleProductId) {
           localStorage.removeItem('cart');
           updateCartUI();
         }
         
-        showOrderConfirmation(docRef.id);
+        showOrderConfirmation(generatedOrderId);
       } catch (err) {
         console.error(err);
-        alert("Error generating manifest: " + err.message);
+        alert("Transaction Aborted: " + err.message);
         btn.innerHTML = `<span class="material-symbols-outlined">rocket_launch</span> Authorize Deployment`;
         btn.disabled = false;
       }
