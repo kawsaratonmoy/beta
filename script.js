@@ -8,20 +8,38 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-// ====== GLOBAL UTILS ======
+// ====== GLOBAL UTILS & MEMOIZED CACHING ======
 const productsMap = new Map();
+let cachedProducts = null;
+let fetchPromise = null;
 
-async function loadProducts() {
-  try {
-    const snapshot = await getDocs(collection(db, 'products'));
-    const products = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-    productsMap.clear();
-    products.forEach(p => productsMap.set(p.id, p));
-    return products;
-  } catch (err) {
-    console.error('Error loading products:', err);
-    return [];
+// The forceRefresh parameter ensures Admins can fetch new data after an edit/delete
+async function loadProducts(forceRefresh = false) {
+  if (forceRefresh) {
+    cachedProducts = null;
+    fetchPromise = null;
   }
+  
+  if (cachedProducts) return cachedProducts;
+  if (fetchPromise) return fetchPromise;
+
+  fetchPromise = (async () => {
+    try {
+      const snapshot = await getDocs(collection(db, 'products'));
+      const products = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      cachedProducts = products;
+      productsMap.clear();
+      products.forEach(p => productsMap.set(p.id, p));
+      return products;
+    } catch (err) {
+      console.error('Error loading products:', err);
+      return [];
+    } finally {
+      fetchPromise = null; // Clean up so subsequent calls use cache or retry safely
+    }
+  })();
+
+  return fetchPromise;
 }
 
 function shuffle(array) {
@@ -1049,7 +1067,7 @@ async function setupInventoryAdmin() {
       div.querySelector('.del-btn').onclick = async () => {
         if(confirm(`Delete ${p.name}?`)) {
           await deleteDoc(doc(db, 'products', p.id));
-          products = await loadProducts();
+          products = await loadProducts(true);
           renderAdminProductsList();
         }
       };
@@ -1080,7 +1098,7 @@ async function setupInventoryAdmin() {
       try {
         if (editingId) { await updateDoc(doc(db, 'products', editingId), data); alert('Updated!'); } 
         else { await addDoc(collection(db, 'products'), data); alert('Added!'); }
-        products = await loadProducts();
+        products = await loadProducts(true);
         switchToAddTab(true); 
       } catch(err) { alert(err.message); }
     });
@@ -1182,8 +1200,10 @@ async function setupOrdersAdmin() {
 }
 
 // ====== GLOBAL INITIALIZATION ROUTER ======
-document.addEventListener('DOMContentLoaded', async () => {
-  await loadProducts();
+document.addEventListener('DOMContentLoaded', () => {
+  // Initiates fetching the products entirely in the background
+  // No longer locking the layout initialization
+  loadProducts();
 
   try {
     updateCartUI();
@@ -1214,16 +1234,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('image-viewer')?.classList.add('hidden');
   });
 
-  // PAGE ROUTING WITH ERROR GUARDS
+  // NON-BLOCKING PAGE ROUTING WITH ERROR GUARDS
   const isHome = !!document.getElementById('interest-products');
   const isProducts = !!document.getElementById('products-grid');
   const isProduct = !!document.getElementById('product-section');
   const isCheckoutPage = window.location.pathname.includes('checkout.html') || !!document.getElementById('co-items-list');
   const isAdminPage = !!document.getElementById('login-form');
 
-  if (isHome) { try { await initHomePage(); } catch (e) { console.error("Home Error", e); } }
-  if (isProducts) { try { await initProductsPage(); } catch (e) { console.error("Products Error", e); } }
-  if (isProduct) { try { await initProductPage(); } catch (e) { console.error("Product View Error", e); } }
-  if (isCheckoutPage) { try { await initCheckoutPage(); } catch (e) { console.error("Checkout Error", e); } }
-  if (isAdminPage) { try { await initAdminPanel(); } catch (e) { console.error("Admin Panel Error", e); } }
+  if (isHome) { initHomePage().catch(e => console.error("Home Error", e)); }
+  if (isProducts) { initProductsPage().catch(e => console.error("Products Error", e)); }
+  if (isProduct) { initProductPage().catch(e => console.error("Product View Error", e)); }
+  if (isCheckoutPage) { initCheckoutPage().catch(e => console.error("Checkout Error", e)); }
+  if (isAdminPage) { initAdminPanel().catch(e => console.error("Admin Panel Error", e)); }
 });
