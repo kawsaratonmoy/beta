@@ -580,63 +580,250 @@ function showOrderConfirmation(orderId) {
   document.body.appendChild(modal);
 }
 
-// ====== ADMIN ROUTER / ORDERS MODULE ======
-async function initAdminPage() {
-  const listContainer = document.getElementById('admin-orders-list');
-  if (!listContainer) return; // Exit cleanly if user is not browsing the admin site view
+// ====== ADMIN SYSTEM ======
+const statusExplanations = {
+  "Pending Verification": "Order received. Awaiting TrxID/Payment verification by admin.",
+  "Processing": "Payment verified. Lab is packing the order.",
+  "Dispatched": "Order handed over to the delivery courier.",
+  "Delivered": "Customer has received the item.",
+  "Cancelled": "Order voided (Invalid payment, fake info, etc.)"
+};
 
-  listContainer.innerHTML = `<div class="p-8 text-center text-outline">Synchronizing array logs...</div>`;
+const statusColors = {
+  "Pending Verification": "bg-yellow-900/30 text-yellow-400 border-yellow-900/50",
+  "Processing": "bg-blue-900/30 text-blue-400 border-blue-900/50",
+  "Dispatched": "bg-purple-900/30 text-purple-400 border-purple-900/50",
+  "Delivered": "bg-green-900/30 text-green-400 border-green-900/50",
+  "Cancelled": "bg-red-900/30 text-red-400 border-red-900/50"
+};
+
+async function initAdminPanel() {
+  const loginSection = document.getElementById('login-section');
+  const dashboardSection = document.getElementById('dashboard-section');
+  const logoutBtn = document.getElementById('logout-btn');
+
+  onAuthStateChanged(auth, user => {
+    if (user) {
+      if(loginSection) loginSection.classList.add('hidden');
+      if(dashboardSection) dashboardSection.classList.remove('hidden');
+      if(logoutBtn) logoutBtn.classList.remove('hidden'); 
+      if (document.getElementById('inventory-tab')) setupInventoryAdmin();
+      if (document.getElementById('orders-tab')) setupOrdersAdmin();
+    } else {
+      if(loginSection) loginSection.classList.remove('hidden');
+      if(dashboardSection) dashboardSection.classList.add('hidden');
+      if(logoutBtn) logoutBtn.classList.add('hidden'); 
+    }
+  });
+
+  const loginForm = document.getElementById('login-form');
+  if (loginForm) {
+    loginForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const email = document.getElementById('email').value;
+      const pwd = document.getElementById('password').value;
+      try { await signInWithEmailAndPassword(auth, email, pwd); } catch (err) { alert(err.message); }
+    });
+  }
+
+  if(logoutBtn) logoutBtn.addEventListener('click', () => signOut(auth));
+}
+
+async function setupInventoryAdmin() {
+  const form = document.getElementById('product-form');
+  const listContainer = document.getElementById('admin-products-list');
+  let editingId = null;
+  let products = await loadProducts();
+
+  function switchToAddTab(isResetting = true) {
+    document.getElementById('tab-add').classList.add('border-primary', 'text-primary');
+    document.getElementById('tab-add').classList.remove('border-transparent', 'text-slate-400');
+    document.getElementById('tab-manage').classList.remove('border-primary', 'text-primary');
+    document.getElementById('tab-manage').classList.add('border-transparent', 'text-slate-400');
+    
+    document.getElementById('view-add').classList.remove('hidden');
+    document.getElementById('view-manage').classList.add('hidden');
+    
+    if (isResetting) {
+      editingId = null;
+      form.reset();
+      document.getElementById('form-title').textContent = 'Add New Product';
+      document.getElementById('submit-btn').innerHTML = '<span class="material-symbols-outlined">add_circle</span> Add Product';
+    }
+  }
+
+  document.getElementById('tab-add')?.addEventListener('click', () => { switchToAddTab(true); });
+  document.getElementById('tab-manage')?.addEventListener('click', () => {
+    document.getElementById('tab-manage').classList.add('border-primary', 'text-primary');
+    document.getElementById('tab-manage').classList.remove('border-transparent', 'text-slate-400');
+    document.getElementById('tab-add').classList.remove('border-primary', 'text-primary');
+    document.getElementById('tab-add').classList.add('border-transparent', 'text-slate-400');
+    document.getElementById('view-manage').classList.remove('hidden');
+    document.getElementById('view-add').classList.add('hidden');
+    renderAdminProductsList();
+  });
+
+  function renderAdminProductsList() {
+    if (!listContainer) return;
+    listContainer.innerHTML = '';
+    products.forEach(p => {
+      const div = document.createElement('div');
+      div.className = 'bg-surface-container-low p-4 rounded-xl border border-white/5 flex flex-col md:flex-row gap-4 items-center justify-between hover:border-primary/30 transition-colors';
+      div.innerHTML = `
+        <div class="flex items-center gap-4 w-full md:w-auto">
+          <img src="${p.images?.[0] || 'logo.png'}" class="w-16 h-16 rounded-lg object-cover bg-surface-variant">
+          <div>
+            <h4 class="font-bold text-on-surface truncate">${p.name}</h4>
+            <div class="text-xs text-outline font-mono">Stock: ${p.stock} | ৳${p.price}</div>
+          </div>
+        </div>
+        <div class="flex gap-2 w-full md:w-auto justify-end">
+          <button class="edit-btn px-4 py-2 bg-surface-variant hover:bg-surface-bright text-slate-200 text-xs rounded-lg font-bold uppercase transition-colors">Edit</button>
+          <button class="del-btn px-4 py-2 bg-red-900/30 hover:bg-red-900/50 text-red-400 text-xs rounded-lg font-bold uppercase transition-colors">Delete</button>
+        </div>
+      `;
+      
+      div.querySelector('.edit-btn').onclick = () => {
+        switchToAddTab(false);
+        editingId = p.id;
+        document.getElementById('p-name').value = p.name || '';
+        document.getElementById('p-category').value = p.category || '';
+        document.getElementById('p-price').value = p.price || '';
+        document.getElementById('p-discount').value = p.discount || '0';
+        document.getElementById('p-stock').value = p.stock || '';
+        document.getElementById('p-color').value = p.color || '';
+        document.getElementById('p-availability').value = p.availability || 'In Stock';
+        document.getElementById('p-hot').checked = p.hotDeal || false;
+        document.getElementById('p-desc').value = p.description || '';
+        document.getElementById('p-meta-desc').value = p.metaDescription || '';
+        document.getElementById('p-detailed-desc').value = p.detailedDescription || '';
+        document.getElementById('p-images').value = p.images ? p.images.join('\n') : '';
+
+        if (typeof p.specs === 'object') {
+          document.getElementById('p-specs').value = Object.entries(p.specs).map(([k,v]) => `${k}: ${v}`).join('\n');
+        } else {
+          document.getElementById('p-specs').value = p.specs || '';
+        }
+        document.getElementById('form-title').textContent = 'Edit Product';
+        document.getElementById('submit-btn').innerHTML = '<span class="material-symbols-outlined">save</span> Save Changes';
+      };
+
+      div.querySelector('.del-btn').onclick = async () => {
+        if(confirm(`Delete ${p.name}?`)) {
+          await deleteDoc(doc(db, 'products', p.id));
+          products = await loadProducts();
+          renderAdminProductsList();
+        }
+      };
+      listContainer.appendChild(div);
+    });
+  }
+
+  if (form) {
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const imagesRaw = document.getElementById('p-images').value.split('\n').map(s=>s.trim()).filter(Boolean);
+      const data = {
+        name: document.getElementById('p-name').value,
+        category: document.getElementById('p-category').value,
+        price: Number(document.getElementById('p-price').value),
+        discount: Number(document.getElementById('p-discount').value),
+        stock: Number(document.getElementById('p-stock').value),
+        color: document.getElementById('p-color').value,
+        availability: document.getElementById('p-availability').value,
+        hotDeal: document.getElementById('p-hot').checked,
+        description: document.getElementById('p-desc').value,
+        metaDescription: document.getElementById('p-meta-desc').value,
+        detailedDescription: document.getElementById('p-detailed-desc').value,
+        images: imagesRaw,
+        specs: document.getElementById('p-specs').value
+      };
+
+      try {
+        if (editingId) { await updateDoc(doc(db, 'products', editingId), data); alert('Updated!'); } 
+        else { await addDoc(collection(db, 'products'), data); alert('Added!'); }
+        products = await loadProducts();
+        switchToAddTab(true); 
+      } catch(err) { alert(err.message); }
+    });
+  }
+}
+
+// ADMIN: ORDERS FIX - Properly reading older `timeISO` keys and rendering gracefully
+async function setupOrdersAdmin() {
+  const listContainer = document.getElementById('orders-list');
+  if (!listContainer) return;
 
   async function loadAndRenderOrders() {
+    listContainer.innerHTML = '<div class="p-8 text-center text-outline"><span class="material-symbols-outlined animate-spin">sync</span></div>';
     try {
-      const qRef = query(collection(db, 'orders'), orderBy('timeISO', 'desc'));
-      const snap = await getDocs(qRef);
+      // Changed query order to 'timeISO' to perfectly match how orders were originally generated
+      const q = query(collection(db, 'orders'), orderBy('timeISO', 'desc'));
+      const snapshot = await getDocs(q);
       
-      if (snap.empty) {
-        listContainer.innerHTML = `<div class="p-8 text-center text-outline">No order manifests compiled in Firestore cloud database.</div>`;
+      if (snapshot.empty) {
+        listContainer.innerHTML = '<div class="p-8 text-center text-outline">No active manifests found.</div>';
         return;
       }
 
       listContainer.innerHTML = '';
-      snap.forEach((orderDoc) => {
-        const o = orderDoc.data();
-        const oId = orderDoc.id;
-        const dateStr = o.timeISO ? new Date(o.timeISO).toLocaleString() : 'Legacy Log';
+      snapshot.forEach(documentSnapshot => {
+        const o = documentSnapshot.data();
+        const oId = documentSnapshot.id;
+        const dateString = o.timeISO ? new Date(o.timeISO).toLocaleString() : new Date().toLocaleString();
+        
+        const badgeClass = statusColors[o.status] || "bg-surface-variant text-slate-300";
+
+        let itemsHtml = '';
+        (o.items || []).forEach(i => {
+          // Fallback map so it supports old database entries AND new database entry formats safely
+          const qty = i.quantity || i.qty || 1;
+          const name = i.productName || i.name || 'Unknown Item';
+          const col = i.color ? `(${i.color})` : '';
+          itemsHtml += `<div class="text-sm"><span class="text-primary font-bold">x${qty}</span> ${name} ${col}</div>`;
+        });
 
         const div = document.createElement('div');
-        div.className = "bg-surface-container-low border border-white/5 p-6 rounded-2xl flex flex-col gap-4";
-        
-        let itemsSummary = (o.items || []).map(i => `${i.productName} (${i.color || 'Base'}) x${i.quantity}`).join(', ');
-
+        div.className = "bg-surface-container p-6 rounded-2xl border border-white/5 space-y-4 shadow-xl";
         div.innerHTML = `
-          <div class="flex flex-wrap justify-between items-start gap-4 border-b border-white/5 pb-4">
+          <div class="flex flex-col md:flex-row justify-between md:items-center gap-4 border-b border-white/5 pb-4">
             <div>
-              <span class="text-xs font-mono bg-surface-container-highest text-primary px-3 py-1 rounded-full font-bold">#${oId.slice(-6).toUpperCase()}</span>
-              <h3 class="text-lg font-bold mt-2 text-on-surface">${o.customerName || 'Anonymous User'}</h3>
-              <p class="text-xs text-outline mt-0.5">${dateStr} | Tel: ${o.phone || '-'}</p>
+              <div class="font-mono text-xs text-outline mb-1">ID: ${oId} | ${dateString}</div>
+              <h3 class="font-bold text-lg">${o.customerName}</h3>
+              <div class="text-sm text-outline flex items-center gap-3 mt-1">
+                <a href="tel:${o.phone}" class="hover:text-primary transition-colors flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">call</span> ${o.phone}</a>
+                ${o.facebook ? `<a href="${o.facebook}" target="_blank" class="hover:text-[#1877F2] transition-colors flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">link</span> Profile</a>` : ''}
+              </div>
             </div>
-            <div class="flex items-center gap-3">
-              <select class="status-select bg-surface-container-lowest border border-white/10 text-on-surface text-sm rounded-xl px-3 py-2 font-bold focus:ring-1 focus:ring-primary outline-none transition-all">
-                <option value="Pending" ${o.status === 'Pending' ? 'selected' : ''}>Pending</option>
-                <option value="Confirmed" ${o.status === 'Confirmed' ? 'selected' : ''}>Confirmed</option>
-                <option value="Shipped" ${o.status === 'Shipped' ? 'selected' : ''}>Shipped</option>
-                <option value="Cancelled" ${o.status === 'Cancelled' ? 'selected' : ''}>Cancelled</option>
+            <div class="flex flex-col items-end gap-2">
+              <span class="px-4 py-1 rounded-full text-xs font-bold border uppercase tracking-widest ${badgeClass}">${o.status || 'Pending'}</span>
+              <select class="status-select bg-surface-container-low border border-white/10 rounded-lg text-xs px-2 py-1 focus:ring-0 focus:border-primary/50 text-slate-300">
+                <option value="Pending Verification" ${o.status==='Pending Verification'?'selected':''}>Pending Verification</option>
+                <option value="Processing" ${o.status==='Processing'?'selected':''}>Processing</option>
+                <option value="Dispatched" ${o.status==='Dispatched'?'selected':''}>Dispatched</option>
+                <option value="Delivered" ${o.status==='Delivered'?'selected':''}>Delivered</option>
+                <option value="Cancelled" ${o.status==='Cancelled'?'selected':''}>Cancelled</option>
               </select>
             </div>
           </div>
-          <div class="text-sm space-y-1 text-on-surface-variant">
-            <p><strong>Shipping Terminal Address:</strong> ${o.address || 'No location given.'}</p>
-            <p><strong>Item Manifest Summary:</strong> ${itemsSummary || 'Empty package log error.'}</p>
-            <p><strong>Payment Strategy:</strong> ${o.paymentMethod || 'Unchecked Protocol'} | Txn: <span class="font-mono text-primary font-bold">${o.transactionId || 'None'}</span></p>
-          </div>
-          <div class="bg-surface-container-lowest rounded-xl p-4 border border-white/5 flex justify-between items-center text-xs font-semibold">
+          
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
-              <p class="text-emerald-400">Paid Amount: ৳${o.paid || 0}</p>
-              <p class="text-red-400 mt-0.5">Due Residuals: ৳${o.due || 0}</p>
+              <h4 class="text-xs uppercase tracking-widest text-outline mb-2">Delivery Drop</h4>
+              <p class="text-sm text-slate-200 leading-relaxed">${o.address}</p>
             </div>
-            <div class="flex gap-6 text-outline-variant">
-              <div class="text-right">Subtotal:<br>Delivery Charge:<br><strong class="text-on-surface text-sm mt-1 block">Total Revenue:</strong></div>
-              <div class="font-mono text-right">৳${o.subtotal || (o.total - o.deliveryFee)}<br>৳${o.deliveryFee}<br><strong class="text-primary text-sm mt-1 block">৳${o.total}</strong></div>
+            <div>
+              <h4 class="text-xs uppercase tracking-widest text-outline mb-2">Payment Details (${o.paymentMethod?.toUpperCase() || 'N/A'})</h4>
+              <p class="text-sm font-mono text-primary bg-primary/10 px-3 py-1.5 rounded-lg border border-primary/20 w-fit">TrxID: ${o.transactionId || o.trxID || 'N/A'}</p>
+            </div>
+          </div>
+
+          <div class="border-t border-white/5 pt-4">
+            <h4 class="text-xs uppercase tracking-widest text-outline mb-3">Manifest Content</h4>
+            <div class="space-y-2 mb-4 bg-surface-container-low p-4 rounded-xl border border-white/5">${itemsHtml}</div>
+            <div class="flex justify-end gap-6 text-sm">
+              <div class="text-outline text-right">Subtotal:<br>Delivery:<br><strong class="text-on-surface text-lg mt-1 block">Total:</strong></div>
+              <div class="font-mono text-right">৳${o.subtotal || (o.total - o.deliveryFee)}<br>৳${o.deliveryFee}<br><strong class="text-primary text-lg mt-1 block">৳${o.total}</strong></div>
             </div>
           </div>
         `;
