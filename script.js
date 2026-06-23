@@ -637,229 +637,234 @@ async function initProductPage() {
         }
       });
     } else if (parsedSpecs["Details"]) {
-      specsGrid.innerHTML = `<div class="text-slate-300 text-sm leading-relaxed">${parsedSpecs["Details"]}</div>`;
+      specsGrid.innerHTML = `<div class="text-slate-300 whitespace-pre-line leading-relaxed">${parsedSpecs["Details"]}</div>`;
     } else {
-      specsGrid.innerHTML = `
-        <div class="flex justify-between items-center py-3 border-b border-white/5">
-          <span class="text-slate-400 font-medium">Category</span>
-          <span class="font-display font-medium text-right text-slate-200">${product.category || 'N/A'}</span>
-        </div>
-      `;
+      specsGrid.innerHTML = `<div class="text-slate-500 py-4">No technical specifications provided.</div>`;
     }
   }
 
-  const otherSection = document.getElementById('other-products');
-  if (otherSection) {
-    otherSection.innerHTML = '';
-    const eligible = products.filter(p => p.availability !== 'Upcoming' && p.id !== product.id);
-    shuffle(eligible).slice(0, 4).forEach(p => otherSection.appendChild(createProductCard(p, products)));
+  const variantsContainer = document.getElementById('product-variants');
+  if (variantsContainer && product.color) {
+    const sameName = products.filter(other => other.name.toLowerCase() === product.name.toLowerCase() && other.color);
+    if (sameName.length > 1) {
+      document.getElementById('variants-section').classList.remove('hidden');
+      variantsContainer.innerHTML = sameName.map(v => {
+        let slug = v.name.toLowerCase().replace(/\s+/g, '-');
+        slug += '-' + v.color.toLowerCase().replace(/\s+/g, '-');
+        return `
+          <button onclick="window.location.href='product.html?slug=${slug}'" class="px-5 py-2.5 rounded-xl border-2 transition-all ${v.id === product.id ? 'border-primary bg-primary/10 text-primary' : 'border-outline-variant/30 text-outline hover:border-primary/50'} text-sm font-bold tracking-wide">
+            ${v.color}
+          </button>
+        `;
+      }).join('');
+    }
   }
 }
 
 async function initCheckoutPage() {
-  const urlParams = new URLSearchParams(window.location.search);
-  const singleProductId = urlParams.get('id');
-  const products = await loadProducts();
-
-  let checkoutItems = [];
-  let hasPreOrder = false;
-
-  if (singleProductId) {
-    const p = products.find(x => x.id === singleProductId);
-    if (!p) { alert('Product not found.'); window.location.href = 'index.html'; return; }
-    const unitPrice = Number(p.price) - Number(p.discount || 0);
-    checkoutItems.push({ id: p.id, name: p.name, color: p.color || '', price: unitPrice, image: p.images?.[0] || 'logo.png', qty: 1, isPreOrder: p.availability === 'Pre Order' });
-    if (p.availability === 'Pre Order') hasPreOrder = true;
-  } else {
-    const cart = getCart();
-    if (cart.length === 0) { alert('Your cart is empty!'); window.location.href = 'index.html'; return; }
-    cart.forEach(item => {
-      const p = products.find(pr => pr.id === item.id);
-      if (p) {
-        item.isPreOrder = p.availability === 'Pre Order';
-        if (item.isPreOrder) hasPreOrder = true;
-        checkoutItems.push(item);
-      }
-    });
+  const params = new URLSearchParams(window.location.search);
+  const singleId = params.get('id');
+  const cart = singleId ? null : getCart();
+  const summaryEl = document.getElementById('checkout-summary');
+  
+  if (!singleId && (!cart || cart.length === 0)) {
+    if(summaryEl) summaryEl.innerHTML = '<p class="text-outline">No items selected.</p>';
+    return;
   }
 
-  const itemsList = document.getElementById('co-items-list');
-  let subtotal = 0;
-  if (itemsList) {
-    itemsList.innerHTML = '';
-    checkoutItems.forEach(item => {
-      const itemTotal = item.price * item.qty;
-      subtotal += itemTotal;
-      itemsList.innerHTML += `
-        <div class="flex gap-4 items-center bg-surface-container-lowest p-3 rounded-xl border border-white/5">
-          <img src="${item.image}" class="w-16 h-16 object-cover rounded-lg bg-surface-variant">
-          <div class="flex-grow">
-            <h4 class="font-headline text-sm font-bold text-on-surface">${item.name}</h4>
-            <p class="text-xs text-outline mb-1">Color: ${item.color || 'Base'} | Qty: ${item.qty}</p>
-            <span class="text-primary font-mono text-sm font-bold">৳${itemTotal.toFixed(2)}</span>
-          </div>
+  let totalItemsCost = 0;
+  let itemsToOrder = [];
+  
+  if (summaryEl) summaryEl.innerHTML = '<div class="flex justify-center p-8"><span class="material-symbols-outlined animate-spin text-primary">sync</span></div>';
+
+  if (singleId) {
+    const product = productsMap.get(singleId);
+    if (product) {
+      const price = Number(product.discount) > 0 ? (Number(product.price) - Number(product.discount)) : Number(product.price);
+      totalItemsCost = price;
+      itemsToOrder.push({ id: product.id, name: product.name, color: product.color||'', price: price, qty: 1 });
+    }
+  } else {
+    itemsToOrder = cart;
+    totalItemsCost = cart.reduce((sum, item) => sum + (item.price * item.qty), 0);
+  }
+
+  function renderSummary() {
+    if (!summaryEl) return;
+    const addr = document.getElementById('c-address')?.value || '';
+    const deliveryFee = calculateDeliveryFee(addr);
+    const finalTotal = totalItemsCost + deliveryFee;
+    
+    let html = '<div class="space-y-4 mb-6">';
+    itemsToOrder.forEach(item => {
+      html += `
+        <div class="flex justify-between text-sm">
+          <span class="text-on-surface truncate pr-4">${item.name} ${item.color ? `(${item.color})` : ''} x${item.qty}</span>
+          <span class="font-mono text-primary whitespace-nowrap">৳${item.price * item.qty}</span>
         </div>
       `;
     });
+    html += `</div>
+      <div class="border-t border-white/10 pt-4 space-y-2">
+        <div class="flex justify-between text-sm text-outline"><span>Subtotal</span> <span class="font-mono">৳${totalItemsCost}</span></div>
+        <div class="flex justify-between text-sm text-outline"><span>Delivery</span> <span class="font-mono">৳${deliveryFee}</span></div>
+        <div class="flex justify-between text-lg font-bold text-primary mt-4 pt-4 border-t border-white/5"><span>Total</span> <span class="font-mono">৳${finalTotal}</span></div>
+      </div>
+    `;
+    summaryEl.innerHTML = html;
   }
+  
+  const addrInput = document.getElementById('c-address');
+  if(addrInput) addrInput.addEventListener('input', renderSummary);
+  renderSummary();
 
-  const subtotalDisplay = document.getElementById('co-subtotal-display');
-  if (subtotalDisplay) subtotalDisplay.textContent = `৳${subtotal.toFixed(2)}`;
+  const form = document.getElementById('checkout-form');
+  if (form) {
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      
+      const addr = document.getElementById('c-address').value;
+      const paymentMethod = document.getElementById('c-payment').value;
+      const isBkash = paymentMethod === 'bkash';
+      const isCOD = paymentMethod === 'cod';
+      
+      const trxID = isBkash ? document.getElementById('c-trx').value : '';
+      const codAdvance = isCOD ? document.getElementById('c-cod-trx').value : '';
+      
+      if (isBkash && !trxID) { alert("Please provide bKash TrxID."); return; }
+      if (isCOD && !codAdvance) { alert("Please provide the TrxID for the ৳150 Advance Payment."); return; }
 
-  const bkashRadio = document.getElementById('pay-bkash');
-  const codRadio = document.getElementById('pay-cod');
-  if (hasPreOrder && codRadio) {
-    codRadio.disabled = true;
-    codRadio.parentElement.classList.add('opacity-30', 'pointer-events-none');
-    if (bkashRadio) bkashRadio.checked = true;
-  }
+      // Validate Stock before placing order
+      for (const item of itemsToOrder) {
+        const pRef = doc(db, 'products', item.id);
+        const pSnap = await getDoc(pRef);
+        if (pSnap.exists()) {
+          const pData = pSnap.data();
+          if (pData.availability !== 'Pre Order' && Number(pData.stock) < item.qty) {
+            alert(`Sorry, ${pData.name} only has ${pData.stock} left in stock.`);
+            return;
+          }
+        }
+      }
 
-  function updateCheckoutTotals() {
-    const address = document.getElementById('co-address')?.value || '';
-    const deliveryFee = calculateDeliveryFee(address);
-    const deliveryDisplay = document.getElementById('co-delivery-display');
-    if(deliveryDisplay) deliveryDisplay.textContent = `৳${deliveryFee.toFixed(2)}`;
-
-    const total = subtotal + deliveryFee;
-    const totalDisplay = document.getElementById('co-total-display');
-    if(totalDisplay) totalDisplay.textContent = `৳${total.toFixed(2)}`;
-
-    const selectedMethod = document.querySelector('input[name="payment_method"]:checked')?.value;
-    const payBox = document.getElementById('payment-details-box');
-    const merchantLabel = document.getElementById('co-merchant-number');
-    const txnContainer = document.getElementById('txn-container');
-    const paymentNote = document.getElementById('co-payment-note');
-    const splitDisplay = document.getElementById('preorder-split-display');
-
-    if (selectedMethod && payBox) payBox.classList.remove('hidden');
-
-    if (hasPreOrder) {
-      const advance = Math.round((subtotal * 0.25) / 5) * 5;
-      if(splitDisplay) splitDisplay.classList.remove('hidden');
-      if(document.getElementById('co-advance-display')) document.getElementById('co-advance-display').textContent = `৳${advance.toFixed(2)}`;
-      if(document.getElementById('co-due-display')) document.getElementById('co-due-display').textContent = `৳${(total - advance).toFixed(2)}`;
-      if(merchantLabel) merchantLabel.textContent = BKASH_NUMBER;
-      if(txnContainer) txnContainer.classList.remove('hidden');
-      if(paymentNote) paymentNote.textContent = `Please send 25% advance ৳${advance.toFixed(2)} to ${BKASH_NUMBER} via bKash Send Money.`;
-    } 
-    else if (selectedMethod === 'Bkash') {
-      if(splitDisplay) splitDisplay.classList.add('hidden');
-      if(merchantLabel) merchantLabel.textContent = BKASH_NUMBER;
-      if(txnContainer) txnContainer.classList.remove('hidden');
-      if(paymentNote) paymentNote.textContent = `Please send total ৳${total.toFixed(2)} to ${BKASH_NUMBER} via bKash Send Money.`;
-    } 
-    else if (selectedMethod === 'Cash on Delivery') {
-      if(splitDisplay) splitDisplay.classList.add('hidden');
-      if(merchantLabel) merchantLabel.textContent = COD_NUMBER;
-      if(txnContainer) txnContainer.classList.remove('hidden');
-      if(paymentNote) paymentNote.textContent = `Please send ONLY delivery charge ৳${deliveryFee.toFixed(2)} to ${COD_NUMBER} via bKash Send Money.`;
-    }
-  }
-
-  document.getElementById('co-address')?.addEventListener('input', updateCheckoutTotals);
-  document.querySelectorAll('input[name="payment_method"]').forEach(r => r.addEventListener('change', updateCheckoutTotals));
-  updateCheckoutTotals();
-
-  const btn = document.getElementById('final-checkout-btn');
-  if(btn) {
-    btn.addEventListener('click', async () => {
-      const name = document.getElementById('co-name').value.trim();
-      const phone = document.getElementById('co-phone').value.trim();
-      const address = document.getElementById('co-address').value.trim();
-      const paymentMethod = document.querySelector('input[name="payment_method"]:checked')?.value;
-      const txnId = document.getElementById('co-txn').value.trim();
-      const policyAccepted = document.getElementById('co-policy')?.checked;
-
-      if (!name || !phone || !address || !paymentMethod) { alert("Please complete all details."); return; }
-      if ((paymentMethod === 'Bkash' || paymentMethod === 'Cash on Delivery') && !txnId) { alert("TXN ID required."); return; }
-      if (!policyAccepted) { alert("Accept policies to deploy."); return; }
-
-      btn.innerHTML = `<span class="material-symbols-outlined animate-spin">sync</span> PROCESSING...`;
-      btn.disabled = true;
-
-      const deliveryFee = calculateDeliveryFee(address);
-      const total = subtotal + deliveryFee;
-      let paid = 0, due = 0;
-
-      if (hasPreOrder) { paid = Math.round((subtotal * 0.25) / 5) * 5; due = total - paid; }
-      else if (paymentMethod === 'Bkash') { paid = total; due = 0; }
-      else if (paymentMethod === 'Cash on Delivery') { paid = deliveryFee; due = subtotal; }
+      const orderData = {
+        customerName: document.getElementById('c-name').value,
+        phone: document.getElementById('c-phone').value,
+        address: addr,
+        facebook: document.getElementById('c-fb').value,
+        paymentMethod: paymentMethod,
+        trxID: isBkash ? trxID : codAdvance,
+        items: itemsToOrder,
+        subtotal: totalItemsCost,
+        deliveryFee: calculateDeliveryFee(addr),
+        total: totalItemsCost + calculateDeliveryFee(addr),
+        status: 'Pending Verification',
+        timestamp: new Date().toISOString()
+      };
 
       try {
-        const orderData = {
-          timeISO: new Date().toISOString(),
-          items: checkoutItems.map(i => ({ productId: i.id, productName: i.name, color: i.color, quantity: i.qty, unitPrice: i.price, wasPreOrder: i.isPreOrder })),
-          deliveryFee, total, paid, due, customerName: name, phone, address, paymentMethod,
-          paymentNumber: document.getElementById('co-merchant-number').textContent, transactionId: txnId.toUpperCase(), status: 'Pending'
-        };
+        await addDoc(collection(db, 'orders'), orderData);
+        
+        // Deduct Stock
+        for (const item of itemsToOrder) {
+          const pRef = doc(db, 'products', item.id);
+          try {
+            await runTransaction(db, async (transaction) => {
+              const pDoc = await transaction.get(pRef);
+              if (pDoc.exists()) {
+                const currentStock = Number(pDoc.data().stock);
+                if (pDoc.data().availability !== 'Pre Order' && currentStock >= item.qty) {
+                   transaction.update(pRef, { stock: currentStock - item.qty });
+                }
+              }
+            });
+          } catch(err) { console.error("Stock update failed for", item.name, err); }
+        }
 
-        const docRef = await addDoc(collection(db, 'orders'), orderData);
-        if (!singleProductId) { localStorage.removeItem('cart'); updateCartUI(); }
-        showOrderConfirmation(docRef.id);
+        if (!singleId) { localStorage.removeItem('cart'); updateCartUI(); }
+        window.location.href = 'index.html?order_success=true';
       } catch (err) {
-        console.error(err);
-        alert("Error generating manifest: " + err.message);
-        btn.innerHTML = `<span class="material-symbols-outlined">rocket_launch</span> Authorize Deployment`;
-        btn.disabled = false;
+        alert("Error placing order: " + err.message);
       }
     });
   }
+
+  const paymentSelect = document.getElementById('c-payment');
+  if(paymentSelect) {
+    paymentSelect.addEventListener('change', (e) => {
+      if (e.target.value === 'bkash') {
+        document.getElementById('bkash-info').classList.remove('hidden');
+        document.getElementById('c-trx').required = true;
+        document.getElementById('cod-info').classList.add('hidden');
+        document.getElementById('c-cod-trx').required = false;
+      } else {
+        document.getElementById('bkash-info').classList.add('hidden');
+        document.getElementById('c-trx').required = false;
+        document.getElementById('cod-info').classList.remove('hidden');
+        document.getElementById('c-cod-trx').required = true;
+      }
+    });
+    
+    // Set static numbers from config
+    const codNumEl = document.getElementById('static-cod-number');
+    const bkashNumEl = document.getElementById('static-bkash-number');
+    if(codNumEl) codNumEl.textContent = COD_NUMBER;
+    if(bkashNumEl) bkashNumEl.textContent = BKASH_NUMBER;
+  }
 }
 
-function showOrderConfirmation(orderId) {
-  const modal = document.createElement('div');
-  modal.className = "fixed inset-0 z-[200] flex items-center justify-center p-6 bg-slate-950/90 backdrop-blur-md opacity-0 transition-opacity duration-500";
-  modal.innerHTML = `
-    <div class="bg-surface-container-high w-full max-w-sm rounded-2xl overflow-hidden border border-primary/20 shadow-2xl transform scale-95 transition-transform duration-500 text-center flex flex-col items-center p-10">
-      <div class="w-20 h-20 bg-primary/10 rounded-full flex items-center justify-center mb-6">
-        <span class="material-symbols-outlined text-5xl text-primary">verified</span>
+function showOrderConfirmation() {
+  const params = new URLSearchParams(window.location.search);
+  if (params.get('order_success') === 'true') {
+    const modal = document.createElement('div');
+    modal.className = "fixed inset-0 bg-background/90 z-[100] flex items-center justify-center p-4 backdrop-blur-sm";
+    modal.innerHTML = `
+      <div class="bg-surface-container-low border border-primary/20 p-8 rounded-2xl max-w-md w-full text-center shadow-2xl relative overflow-hidden">
+        <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-primary to-primary-container"></div>
+        <span class="material-symbols-outlined text-6xl text-primary mb-4 block">check_circle</span>
+        <h2 class="text-2xl font-display font-bold mb-2">Manifest Received</h2>
+        <p class="text-outline text-sm mb-6 leading-relaxed">Your order has been encrypted and transmitted to our lab. We will process it shortly.</p>
+        <button onclick="this.parentElement.parentElement.remove(); window.history.replaceState({}, document.title, window.location.pathname);" class="px-6 py-3 bg-surface-variant hover:bg-surface-container border border-white/10 text-on-surface font-bold uppercase tracking-widest text-xs rounded-xl transition-all w-full">Acknowledge</button>
       </div>
-      <h2 class="font-headline text-3xl font-bold tracking-tighter text-on-surface mb-2">Transmission<br>Successful</h2>
-      <p class="text-outline text-sm mb-6 leading-relaxed">Dispatch manifest <span class="text-primary font-mono font-bold">#${orderId.slice(-6).toUpperCase()}</span> uploaded.</p>
-      <button onclick="window.location.href='index.html'" class="w-full bg-primary text-white font-headline font-bold py-4 rounded-xl tracking-widest uppercase shadow-lg shadow-purple-500/20 active:scale-[0.98] transition-all">
-        Return to Base
-      </button>
-    </div>
-  `;
-  document.body.appendChild(modal);
-  setTimeout(() => { modal.classList.remove('opacity-0'); modal.querySelector('div').classList.remove('scale-95'); }, 50);
+    `;
+    document.body.appendChild(modal);
+  }
 }
 
-// ====== ADMIN ROUTES & LOGIC ======
-
+// ====== ADMIN SYSTEM ======
 const statusExplanations = {
-  Pending: 'Order received, waiting for processing.',
-  Processing: 'Your order is being prepared.',
-  Dispatched: 'Your order has been shipped.',
-  Delivered: 'Your order has been delivered.',
-  Cancelled: 'Your order has been cancelled.'
+  "Pending Verification": "Order received. Awaiting TrxID/Payment verification by admin.",
+  "Processing": "Payment verified. Lab is packing the order.",
+  "Dispatched": "Order handed over to the delivery courier.",
+  "Delivered": "Customer has received the item.",
+  "Cancelled": "Order voided (Invalid payment, fake info, etc.)"
 };
 
 const statusColors = {
-  Pending: '#eab308',
-  Processing: '#3b82f6',
-  Dispatched: '#a855f7',
-  Delivered: '#22c55e',
-  Cancelled: '#ef4444'
+  "Pending Verification": "bg-yellow-900/30 text-yellow-400 border-yellow-900/50",
+  "Processing": "bg-blue-900/30 text-blue-400 border-blue-900/50",
+  "Dispatched": "bg-purple-900/30 text-purple-400 border-purple-900/50",
+  "Delivered": "bg-green-900/30 text-green-400 border-green-900/50",
+  "Cancelled": "bg-red-900/30 text-red-400 border-red-900/50"
 };
 
 async function initAdminPanel() {
   const loginSection = document.getElementById('login-section');
   const dashboardSection = document.getElementById('dashboard-section');
-  const logoutBtn = document.getElementById('logout-btn'); // Grab the logout button
+  const logoutBtn = document.getElementById('logout-btn');
 
   onAuthStateChanged(auth, user => {
     if (user) {
       if(loginSection) loginSection.classList.add('hidden');
       if(dashboardSection) dashboardSection.classList.remove('hidden');
-      if(logoutBtn) logoutBtn.classList.remove('hidden'); // Show logout when logged in
+      if(logoutBtn) logoutBtn.classList.remove('hidden'); 
       
       if (document.getElementById('inventory-tab')) setupInventoryAdmin();
       if (document.getElementById('orders-tab')) setupOrdersAdmin();
     } else {
       if(loginSection) loginSection.classList.remove('hidden');
       if(dashboardSection) dashboardSection.classList.add('hidden');
-      if(logoutBtn) logoutBtn.classList.add('hidden'); // Hide logout when logged out
+      if(logoutBtn) logoutBtn.classList.add('hidden'); 
     }
   });
 
@@ -887,7 +892,6 @@ async function setupInventoryAdmin() {
   let editingId = null;
   let products = await loadProducts();
 
-  // Helper function to switch tabs safely without resetting data
   function switchToAddTab(isResetting = true) {
     document.getElementById('tab-add').classList.add('border-primary', 'text-primary');
     document.getElementById('tab-add').classList.remove('border-transparent', 'text-slate-400');
@@ -905,10 +909,7 @@ async function setupInventoryAdmin() {
     }
   }
 
-  // Normal clicking of the "Add Product" tab resets the form
-  document.getElementById('tab-add')?.addEventListener('click', () => {
-    switchToAddTab(true); 
-  });
+  document.getElementById('tab-add')?.addEventListener('click', () => { switchToAddTab(true); });
 
   document.getElementById('tab-manage')?.addEventListener('click', () => {
     document.getElementById('tab-manage').classList.add('border-primary', 'text-primary');
@@ -942,10 +943,9 @@ async function setupInventoryAdmin() {
       `;
       
       div.querySelector('.edit-btn').onclick = () => {
-        // Switch view first WITHOUT resetting
         switchToAddTab(false);
         
-        editingId = p.id; // Assign ID
+        editingId = p.id;
         document.getElementById('p-name').value = p.name || '';
         document.getElementById('p-category').value = p.category || '';
         document.getElementById('p-price').value = p.price || '';
@@ -1013,10 +1013,117 @@ async function setupInventoryAdmin() {
           alert('Added!');
         }
         
-        // Refresh products and reset UI
         products = await loadProducts();
         switchToAddTab(true); 
       } catch(err) { alert(err.message); }
     });
   }
 }
+
+// ADMIN: ORDERS
+async function setupOrdersAdmin() {
+  const listContainer = document.getElementById('orders-list');
+  if (!listContainer) return;
+
+  async function loadAndRenderOrders() {
+    listContainer.innerHTML = '<div class="p-8 text-center text-outline"><span class="material-symbols-outlined animate-spin">sync</span></div>';
+    try {
+      const q = query(collection(db, 'orders'), orderBy('timestamp', 'desc'));
+      const snapshot = await getDocs(q);
+      
+      if (snapshot.empty) {
+        listContainer.innerHTML = '<div class="p-8 text-center text-outline">No active manifests found.</div>';
+        return;
+      }
+
+      listContainer.innerHTML = '';
+      snapshot.forEach(documentSnapshot => {
+        const o = documentSnapshot.data();
+        const oId = documentSnapshot.id;
+        const date = new Date(o.timestamp).toLocaleString();
+        
+        const badgeClass = statusColors[o.status] || "bg-surface-variant text-slate-300";
+        const explanation = statusExplanations[o.status] || "";
+
+        let itemsHtml = '';
+        o.items.forEach(i => {
+          itemsHtml += `<div class="text-sm"><span class="text-primary font-bold">x${i.qty}</span> ${i.name} ${i.color ? `(${i.color})` : ''}</div>`;
+        });
+
+        const div = document.createElement('div');
+        div.className = "bg-surface-container p-6 rounded-2xl border border-white/5 space-y-4 shadow-xl";
+        div.innerHTML = `
+          <div class="flex flex-col md:flex-row justify-between md:items-center gap-4 border-b border-white/5 pb-4">
+            <div>
+              <div class="font-mono text-xs text-outline mb-1">ID: ${oId} | ${date}</div>
+              <h3 class="font-bold text-lg">${o.customerName}</h3>
+              <div class="text-sm text-outline flex items-center gap-3 mt-1">
+                <a href="tel:${o.phone}" class="hover:text-primary transition-colors flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">call</span> ${o.phone}</a>
+                ${o.facebook ? `<a href="${o.facebook}" target="_blank" class="hover:text-[#1877F2] transition-colors flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">link</span> Profile</a>` : ''}
+              </div>
+            </div>
+            <div class="flex flex-col items-end gap-2">
+              <span class="px-4 py-1 rounded-full text-xs font-bold border uppercase tracking-widest ${badgeClass}">${o.status}</span>
+              <select class="status-select bg-surface-container-low border border-white/10 rounded-lg text-xs px-2 py-1 focus:ring-0 focus:border-primary/50 text-slate-300">
+                <option value="Pending Verification" ${o.status==='Pending Verification'?'selected':''}>Pending Verification</option>
+                <option value="Processing" ${o.status==='Processing'?'selected':''}>Processing</option>
+                <option value="Dispatched" ${o.status==='Dispatched'?'selected':''}>Dispatched</option>
+                <option value="Delivered" ${o.status==='Delivered'?'selected':''}>Delivered</option>
+                <option value="Cancelled" ${o.status==='Cancelled'?'selected':''}>Cancelled</option>
+              </select>
+            </div>
+          </div>
+          
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+              <h4 class="text-xs uppercase tracking-widest text-outline mb-2">Delivery Drop</h4>
+              <p class="text-sm text-slate-200 leading-relaxed">${o.address}</p>
+            </div>
+            <div>
+              <h4 class="text-xs uppercase tracking-widest text-outline mb-2">Payment Details (${o.paymentMethod.toUpperCase()})</h4>
+              <p class="text-sm font-mono text-primary bg-primary/10 px-3 py-1.5 rounded-lg border border-primary/20 w-fit">TrxID: ${o.trxID}</p>
+            </div>
+          </div>
+
+          <div class="border-t border-white/5 pt-4">
+            <h4 class="text-xs uppercase tracking-widest text-outline mb-3">Manifest Content</h4>
+            <div class="space-y-2 mb-4 bg-surface-container-low p-4 rounded-xl border border-white/5">${itemsHtml}</div>
+            <div class="flex justify-end gap-6 text-sm">
+              <div class="text-outline text-right">Subtotal:<br>Delivery:<br><strong class="text-on-surface text-lg mt-1 block">Total:</strong></div>
+              <div class="font-mono text-right">৳${o.subtotal}<br>৳${o.deliveryFee}<br><strong class="text-primary text-lg mt-1 block">৳${o.total}</strong></div>
+            </div>
+          </div>
+        `;
+
+        div.querySelector('.status-select').addEventListener('change', async (e) => {
+          const newStatus = e.target.value;
+          try {
+            await updateDoc(doc(db, 'orders', oId), { status: newStatus });
+            loadAndRenderOrders();
+          } catch(err) { alert("Failed to update status: " + err.message); }
+        });
+
+        listContainer.appendChild(div);
+      });
+    } catch(err) {
+      listContainer.innerHTML = `<div class="p-8 text-center text-red-400">Error loading orders: ${err.message}</div>`;
+    }
+  }
+
+  loadAndRenderOrders();
+}
+
+// ====== GLOBAL INITIALIZATION ROUTER ======
+document.addEventListener('DOMContentLoaded', async () => {
+  await loadProducts();
+  updateCartUI();
+
+  // Route based on what elements exist
+  if (document.getElementById('interest-products')) initHomePage();
+  if (document.getElementById('products-grid')) initProductsPage();
+  if (document.getElementById('product-section')) initProductPage();
+  if (document.getElementById('checkout-form')) initCheckoutPage();
+  if (document.getElementById('login-form')) initAdminPanel();
+  
+  showOrderConfirmation();
+});
