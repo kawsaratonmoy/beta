@@ -18,6 +18,65 @@ const CACHE_KEY = 'store_products_data';
 const CACHE_EXPIRY_KEY = 'store_products_expiry';
 const CACHE_TTL = 5 * 60 * 1000; 
 
+// ====== DYNAMIC BYTE-SIZE SHARDING ENGINE ======
+// Automatically calculates JSON size and splits documents exactly when they near 1MB
+async function rebuildCatalogShards(productsList) {
+  const MAX_BYTES = 800000; // ~800KB limit to safely stay below Firestore's 1MB hard limit
+  const chunks = [];
+  let currentChunk = [];
+  let currentByteSize = 0;
+
+  for (const product of productsList) {
+    const productString = JSON.stringify(product);
+    // Calculate exact payload byte size in browser memory
+    const productBytes = new Blob([productString]).size;
+
+    // If adding this product pushes us over the safe limit, seal the shard and start a new one
+    if (currentByteSize + productBytes > MAX_BYTES && currentChunk.length > 0) {
+      chunks.push(currentChunk);
+      currentChunk = [];
+      currentByteSize = 0;
+    }
+    currentChunk.push(product);
+    currentByteSize += productBytes;
+  }
+
+  if (currentChunk.length > 0) {
+    chunks.push(currentChunk);
+  }
+
+  const metaRef = doc(db, 'store_data', 'catalog_meta');
+  const metaSnap = await getDoc(metaRef);
+  const oldShardCount = metaSnap.exists() ? (metaSnap.data().shardCount || 0) : 0;
+
+  // Upload the perfectly sized chunks to Firestore
+  for (let i = 0; i < chunks.length; i++) {
+    await setDoc(doc(db, 'master_catalog_shards', `shard_${i}`), { items: chunks[i] });
+  }
+
+  // Delete any leftover obsolete shards if your inventory significantly shrinks
+  if (oldShardCount > chunks.length) {
+    for (let i = chunks.length; i < oldShardCount; i++) {
+      try { await deleteDoc(doc(db, 'master_catalog_shards', `shard_${i}`)); } 
+      catch (e) { console.warn(`Cleanup skipped for shard_${i}`); }
+    }
+  }
+
+  // Update the master map so the website knows how many shards to fetch
+  await setDoc(metaRef, { shardCount: chunks.length });
+}
+
+// Background sync function used by Admin tools and Checkout
+async function syncMasterCatalog() {
+  try {
+    const snapshot = await getDocs(collection(db, 'products'));
+    const productsList = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+    await rebuildCatalogShards(productsList);
+  } catch (err) {
+    console.error("Critical: Failed to compile master catalog matrix:", err);
+  }
+}
+
 async function loadProducts(forceRefresh = false) {
   const now = Date.now();
 
@@ -31,7 +90,7 @@ async function loadProducts(forceRefresh = false) {
   if (cachedProducts) return cachedProducts;
   if (fetchPromise) return fetchPromise;
 
-  // 1. Attempt to resolve from persistent LocalStorage cache (0 Reads across pages)
+  // 1. Resolve from zero-read persistent LocalStorage cache across page transitions
   const localCache = localStorage.getItem(CACHE_KEY);
   const cacheExpiry = localStorage.getItem(CACHE_EXPIRY_KEY);
 
@@ -42,37 +101,42 @@ async function loadProducts(forceRefresh = false) {
       productsMap.clear();
       products.forEach(p => productsMap.set(p.id, p));
       return products;
-    } catch (err) {
-      console.error('Error parsing local product cache data:', err);
-    }
+    } catch (err) { console.error('Error parsing local product cache data:', err); }
   }
 
-  // 2. Fetch from Master Catalog (1 Read) OR Self-Heal if it doesn't exist yet
+  // 2. Fetch from Master Shards (Or Self-Heal if the database is blank)
   fetchPromise = (async () => {
     try {
-      const catalogRef = doc(db, 'store_data', 'master_catalog');
-      const catalogSnap = await getDoc(catalogRef);
+      const metaRef = doc(db, 'store_data', 'catalog_meta');
+      const metaSnap = await getDoc(metaRef);
       
       let products = [];
       
-      if (catalogSnap.exists()) {
-        // Master catalog exists! Standard 1-read operation.
-        products = catalogSnap.data().items || [];
+      if (metaSnap.exists()) {
+        const shardCount = metaSnap.data().shardCount || 0;
+        const shardPromises = [];
+        
+        for (let i = 0; i < shardCount; i++) {
+          shardPromises.push(getDoc(doc(db, 'master_catalog_shards', `shard_${i}`)));
+        }
+        
+        const shardSnaps = await Promise.all(shardPromises);
+        shardSnaps.forEach(snap => {
+          if (snap.exists()) { products = products.concat(snap.data().items || []); }
+        });
       } else {
-        // SELF-HEALING FALLBACK: Catalog doesn't exist yet. Pull products manually once and build it.
-        console.warn("Master catalog missing! Automatically compiling it from individual products...");
+        // SELF-HEALING FALLBACK: If catalog_meta is missing, force a rebuild automatically
+        console.warn("Catalog metadata missing! Recompiling architecture into automated shards...");
+        await syncMasterCatalog();
+        // Retry fetch after healing
         const snapshot = await getDocs(collection(db, 'products'));
         products = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-        
-        // Save it to Firestore so it exists for the next second/visitor
-        await setDoc(catalogRef, { items: products });
       }
       
       cachedProducts = products;
       productsMap.clear();
       products.forEach(p => productsMap.set(p.id, p));
 
-      // Commit items to persistent local storage with expiration time
       localStorage.setItem(CACHE_KEY, JSON.stringify(products));
       localStorage.setItem(CACHE_EXPIRY_KEY, (now + CACHE_TTL).toString());
 
@@ -196,7 +260,6 @@ function getCart() {
   return cart ? JSON.parse(cart) : [];
 }
 
-// Fixed function signature to accept parameters directly instead of referencing window block objects blindly
 function saveCart(cart) {
   localStorage.setItem('cart', JSON.stringify(cart));
   updateCartUI();
@@ -291,6 +354,7 @@ function updateCartUI() {
     
     div.querySelector('.qty-minus').addEventListener('click', () => updateCartQuantity(item.id, item.qty - 1));
     
+    // Check stock limit on increment
     div.querySelector('.qty-plus').addEventListener('click', () => {
       const product = productsMap.get(item.id);
       if (product && product.availability !== 'Pre Order' && (item.qty + 1) > Number(product.stock)) {
@@ -715,7 +779,7 @@ async function initProductPage() {
   } catch(e) { console.error("Could not load other products", e); }
 }
 
-// ====== DEDICATED CHECKOUT ENGINE ======
+// ====== DEDICATED CHECKOUT ENGINE (WITH TRANSACTION & STOCK DEDUCTION) ======
 async function initCheckoutPage() {
   const urlParams = new URLSearchParams(window.location.search);
   const singleProductId = urlParams.get('id');
@@ -902,12 +966,10 @@ async function initCheckoutPage() {
 
         let generatedOrderId = '';
 
+        // Safely evaluate stock strictly against the core product documents
         await runTransaction(db, async (transaction) => {
           const productRefs = checkoutItems.map(item => doc(db, 'products', item.id));
           const productSnaps = await Promise.all(productRefs.map(ref => transaction.get(ref)));
-
-          const catalogRef = doc(db, 'store_data', 'master_catalog');
-          const catalogSnap = await transaction.get(catalogRef);
 
           for (let i = 0; i < checkoutItems.length; i++) {
             const snap = productSnaps[i];
@@ -922,6 +984,7 @@ async function initCheckoutPage() {
             }
           }
 
+          // Deduct the stock safely for all valid requested quantities from independent documents
           for (let i = 0; i < checkoutItems.length; i++) {
             const snap = productSnaps[i];
             const data = snap.data();
@@ -933,23 +996,14 @@ async function initCheckoutPage() {
             }
           }
 
-          if (catalogSnap.exists()) {
-            const catalogData = catalogSnap.data();
-            const itemsList = catalogData.items || [];
-            checkoutItems.forEach(item => {
-              const catalogItem = itemsList.find(i => i.id === item.id);
-              if (catalogItem && Number(catalogItem.stock) !== -1 && catalogItem.availability !== 'Pre Order') {
-                catalogItem.stock = Number(catalogItem.stock) - item.qty;
-              }
-            });
-            transaction.update(catalogRef, { items: itemsList });
-          }
-
           const newOrderRef = doc(collection(db, 'orders'));
           transaction.set(newOrderRef, orderData);
           generatedOrderId = newOrderRef.id;
         });
         
+        // Push cache sync to background so transaction completes instantly
+        syncMasterCatalog().catch(err => console.warn('Background shard sync after checkout delayed:', err));
+
         if (!singleProductId) {
           localStorage.removeItem('cart');
           updateCartUI();
@@ -1035,16 +1089,6 @@ async function initAdminPanel() {
   }
 
   if(logoutBtn) logoutBtn.addEventListener('click', () => signOut(auth));
-}
-
-async function syncMasterCatalog() {
-  try {
-    const snapshot = await getDocs(collection(db, 'products'));
-    const productsList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-    await setDoc(doc(db, 'store_data', 'master_catalog'), { items: productsList });
-  } catch (err) {
-    console.error("Critical: Failed to compile master catalog matrix:", err);
-  }
 }
 
 async function setupInventoryAdmin() {
