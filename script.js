@@ -1,7 +1,6 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js';
 import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/9.23.0/firebase-auth.js';
-// ADDED: setDoc imported to handle catalog initialization gracefully
-import { getFirestore, collection, getDocs, addDoc, doc, updateDoc, deleteDoc, getDoc, setDoc, orderBy, query, where, runTransaction } from 'https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js';
+import { getFirestore, collection, getDocs, addDoc, doc, updateDoc, deleteDoc, getDoc, orderBy, query, where, runTransaction } from 'https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js';
 import { firebaseConfig, BKASH_NUMBER, COD_NUMBER, DELIVERY_FEE } from './config.js';
 
 // ====== INITIALIZE FIREBASE ======
@@ -14,9 +13,17 @@ const productsMap = new Map();
 let cachedProducts = null;
 let fetchPromise = null;
 
-// OPTIMIZED: Now fetches exactly ONE document (1 read total) instead of scanning the whole collection
+// Persistent cache keys and settings (5-minute TTL)
+const CACHE_KEY = 'store_products_data';
+const CACHE_EXPIRY_KEY = 'store_products_expiry';
+const CACHE_TTL = 5 * 60 * 1000; 
+
 async function loadProducts(forceRefresh = false) {
+  const now = Date.now();
+
   if (forceRefresh) {
+    localStorage.removeItem(CACHE_KEY);
+    localStorage.removeItem(CACHE_EXPIRY_KEY);
     cachedProducts = null;
     fetchPromise = null;
   }
@@ -24,21 +31,42 @@ async function loadProducts(forceRefresh = false) {
   if (cachedProducts) return cachedProducts;
   if (fetchPromise) return fetchPromise;
 
-  fetchPromise = (async () => {
+  // 1. Attempt to resolve from persistent LocalStorage cache
+  const localCache = localStorage.getItem(CACHE_KEY);
+  const cacheExpiry = localStorage.getItem(CACHE_EXPIRY_KEY);
+
+  if (localCache && cacheExpiry && now < Number(cacheExpiry)) {
     try {
-      // Pulls all optimized product records from a single document container
-      const catalogSnap = await getDoc(doc(db, 'store_data', 'master_catalog'));
-      const products = catalogSnap.exists() ? (catalogSnap.data().items || []) : [];
-      
+      const products = JSON.parse(localCache);
       cachedProducts = products;
       productsMap.clear();
       products.forEach(p => productsMap.set(p.id, p));
       return products;
     } catch (err) {
-      console.error('Error loading products from master catalog:', err);
+      console.error('Error parsing local product cache data:', err);
+    }
+  }
+
+  // 2. Fetch from network database if cache is stale, missing, or forced
+  fetchPromise = (async () => {
+    try {
+      const snapshot = await getDocs(collection(db, 'products'));
+      const products = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      
+      cachedProducts = products;
+      productsMap.clear();
+      products.forEach(p => productsMap.set(p.id, p));
+
+      // Commit items to persistent local storage with expiration time
+      localStorage.setItem(CACHE_KEY, JSON.stringify(products));
+      localStorage.setItem(CACHE_EXPIRY_KEY, (now + CACHE_TTL).toString());
+
+      return products;
+    } catch (err) {
+      console.error('Error loading products from Firebase:', err);
       return [];
     } finally {
-      fetchPromise = null; // Clean up so subsequent calls use cache or retry safely
+      fetchPromise = null; 
     }
   })();
 
@@ -247,6 +275,7 @@ function updateCartUI() {
     
     div.querySelector('.qty-minus').addEventListener('click', () => updateCartQuantity(item.id, item.qty - 1));
     
+    // Check stock limit on increment
     div.querySelector('.qty-plus').addEventListener('click', () => {
       const product = productsMap.get(item.id);
       if (product && product.availability !== 'Pre Order' && (item.qty + 1) > Number(product.stock)) {
@@ -662,6 +691,7 @@ async function initProductPage() {
     }
   }
 
+  // Wrapped Other Products safely
   try {
     const otherSection = document.getElementById('other-products');
     if (otherSection) {
@@ -865,10 +895,6 @@ async function initCheckoutPage() {
           const productRefs = checkoutItems.map(item => doc(db, 'products', item.id));
           const productSnaps = await Promise.all(productRefs.map(ref => transaction.get(ref)));
 
-          // OPTIMIZED: Fetch Master Catalog document reference atomically within the checkout transaction
-          const catalogRef = doc(db, 'store_data', 'master_catalog');
-          const catalogSnap = await transaction.get(catalogRef);
-
           // Phase 2: Validate Stock against all items requested
           for (let i = 0; i < checkoutItems.length; i++) {
             const snap = productSnaps[i];
@@ -878,12 +904,13 @@ async function initCheckoutPage() {
             const currentStock = Number(data.stock);
             const item = checkoutItems[i];
 
+            // If the item has a finite stock limitation and is NOT a pre-order, verify if we can fulfill it.
             if (currentStock !== -1 && data.availability !== 'Pre Order' && currentStock < item.qty) {
               throw new Error(`Insufficient stock for ${item.name}. Only ${currentStock} left available.`);
             }
           }
 
-          // Phase 3: Deduct the stock safely for all valid requested quantities from independent documents
+          // Phase 3: Deduct the stock safely for all valid requested quantities
           for (let i = 0; i < checkoutItems.length; i++) {
             const snap = productSnaps[i];
             const data = snap.data();
@@ -895,25 +922,13 @@ async function initCheckoutPage() {
             }
           }
 
-          // OPTIMIZED Phase 3.5: Deduct the stock fields within the Master Catalog array simultaneously
-          if (catalogSnap.exists()) {
-            const catalogData = catalogSnap.data();
-            const itemsList = catalogData.items || [];
-            checkoutItems.forEach(item => {
-              const catalogItem = itemsList.find(i => i.id === item.id);
-              if (catalogItem && Number(catalogItem.stock) !== -1 && catalogItem.availability !== 'Pre Order') {
-                catalogItem.stock = Number(catalogItem.stock) - item.qty;
-              }
-            });
-            transaction.update(catalogRef, { items: itemsList });
-          }
-
           // Phase 4: Commit Order Registration
           const newOrderRef = doc(collection(db, 'orders'));
           transaction.set(newOrderRef, orderData);
           generatedOrderId = newOrderRef.id;
         });
         
+        // Remove items from local cart if we were utilizing the cart view to checkout
         if (!singleProductId) {
           localStorage.removeItem('cart');
           updateCartUI();
@@ -1001,17 +1016,6 @@ async function initAdminPanel() {
   if(logoutBtn) logoutBtn.addEventListener('click', () => signOut(auth));
 }
 
-// OPTIMIZED ADDITION: Admin sync function that re-compiles individual items to the master object array
-async function syncMasterCatalog() {
-  try {
-    const snapshot = await getDocs(collection(db, 'products'));
-    const productsList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-    await setDoc(doc(db, 'store_data', 'master_catalog'), { items: productsList });
-  } catch (err) {
-    console.error("Critical: Failed to compile master catalog matrix:", err);
-  }
-}
-
 async function setupInventoryAdmin() {
   const form = document.getElementById('product-form');
   const listContainer = document.getElementById('admin-products-list');
@@ -1094,8 +1098,6 @@ async function setupInventoryAdmin() {
       div.querySelector('.del-btn').onclick = async () => {
         if(confirm(`Delete ${p.name}?`)) {
           await deleteDoc(doc(db, 'products', p.id));
-          // OPTIMIZED: Synchronize master catalog directly after backend item purge
-          await syncMasterCatalog();
           products = await loadProducts(true);
           renderAdminProductsList();
         }
@@ -1127,9 +1129,6 @@ async function setupInventoryAdmin() {
       try {
         if (editingId) { await updateDoc(doc(db, 'products', editingId), data); alert('Updated!'); } 
         else { await addDoc(collection(db, 'products'), data); alert('Added!'); }
-        
-        // OPTIMIZED: Update both backend records and master catalog array map cleanly
-        await syncMasterCatalog();
         products = await loadProducts(true);
         switchToAddTab(true); 
       } catch(err) { alert(err.message); }
@@ -1207,8 +1206,8 @@ async function setupOrdersAdmin() {
             <h4 class="text-xs uppercase tracking-widest text-outline mb-3">Manifest Content</h4>
             <div class="space-y-2 mb-4 bg-surface-container-low p-4 rounded-xl border border-white/5">${itemsHtml}</div>
             <div class="flex justify-end gap-6 text-sm">
-              <div class="text-outline text-right">Subtotal:<br>Delivery:<br><strong class="text-on-surface text-lg mt-1 block">Total:</strong></div>
-              <div class="font-mono text-right">৳${o.subtotal || (o.total - o.deliveryFee)}<br>৳${o.deliveryFee}<br><strong class="text-primary text-lg mt-1 block">৳${o.total}</strong></div>
+              <div class="text-outline text-right">Subtotal:<br>Delivery:<br>Paid:<br>Due:<br><strong class="text-on-surface text-lg mt-1 block">Total:</strong></div>
+              <div class="font-mono text-right">৳${o.subtotal || (o.total - o.deliveryFee)}<br>৳${o.deliveryFee}<br>৳${o.paid || 0}<br>৳${o.due || 0}<br><strong class="text-primary text-lg mt-1 block">৳${o.total}</strong></div>
             </div>
           </div>
         `;
@@ -1241,6 +1240,7 @@ document.addEventListener('DOMContentLoaded', () => {
     console.warn("Cart update bypassed:", err);
   }
 
+  // GLOBAL UI NAV EVENTS
   document.getElementById('cart-link')?.addEventListener('click', () => {
     const slider = document.getElementById('cart-slider');
     if (slider) {
@@ -1263,6 +1263,7 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('image-viewer')?.classList.add('hidden');
   });
 
+  // NON-BLOCKING PAGE ROUTING WITH ERROR GUARDS
   const isHome = !!document.getElementById('interest-products');
   const isProducts = !!document.getElementById('products-grid');
   const isProduct = !!document.getElementById('product-section');
