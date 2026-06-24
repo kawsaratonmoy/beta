@@ -13,25 +13,20 @@ const productsMap = new Map();
 let cachedProducts = null;
 let fetchPromise = null;
 
-// Persistent cache keys and settings (5-minute TTL)
 const CACHE_KEY = 'store_products_data';
 const CACHE_EXPIRY_KEY = 'store_products_expiry';
-const CACHE_TTL = 5 * 60 * 1000; 
+const CACHE_TTL = 5 * 60 * 1000;
 
 // ====== DYNAMIC BYTE-SIZE SHARDING ENGINE ======
-// Automatically calculates JSON size and splits documents exactly when they near 1MB
 async function rebuildCatalogShards(productsList) {
-  const MAX_BYTES = 800000; // ~800KB limit to safely stay below Firestore's 1MB hard limit
+  const MAX_BYTES = 800000;
   const chunks = [];
   let currentChunk = [];
   let currentByteSize = 0;
 
   for (const product of productsList) {
     const productString = JSON.stringify(product);
-    // Calculate exact payload byte size in browser memory
     const productBytes = new Blob([productString]).size;
-
-    // If adding this product pushes us over the safe limit, seal the shard and start a new one
     if (currentByteSize + productBytes > MAX_BYTES && currentChunk.length > 0) {
       chunks.push(currentChunk);
       currentChunk = [];
@@ -41,20 +36,16 @@ async function rebuildCatalogShards(productsList) {
     currentByteSize += productBytes;
   }
 
-  if (currentChunk.length > 0) {
-    chunks.push(currentChunk);
-  }
+  if (currentChunk.length > 0) chunks.push(currentChunk);
 
   const metaRef = doc(db, 'store_data', 'catalog_meta');
   const metaSnap = await getDoc(metaRef);
   const oldShardCount = metaSnap.exists() ? (metaSnap.data().shardCount || 0) : 0;
 
-  // Upload the perfectly sized chunks to Firestore
   for (let i = 0; i < chunks.length; i++) {
     await setDoc(doc(db, 'master_catalog_shards', `shard_${i}`), { items: chunks[i] });
   }
 
-  // Delete any leftover obsolete shards if your inventory significantly shrinks
   if (oldShardCount > chunks.length) {
     for (let i = chunks.length; i < oldShardCount; i++) {
       try { await deleteDoc(doc(db, 'master_catalog_shards', `shard_${i}`)); } 
@@ -62,21 +53,28 @@ async function rebuildCatalogShards(productsList) {
     }
   }
 
-  // Update the master map so the website knows how many shards to fetch
   await setDoc(metaRef, { shardCount: chunks.length });
 }
 
-// Background sync function used by Admin tools and Checkout
+// Background sync function used by Admin tools
 async function syncMasterCatalog() {
   try {
     const snapshot = await getDocs(collection(db, 'products'));
     const productsList = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+    
+    // --- NEW: Generate the Flat Live Inventory Map ---
+    const liveInventoryMap = {};
+    productsList.forEach(p => { liveInventoryMap[p.id] = p.stock; });
+    await setDoc(doc(db, 'store_data', 'live_inventory'), liveInventoryMap);
+    // -------------------------------------------------
+
     await rebuildCatalogShards(productsList);
   } catch (err) {
     console.error("Critical: Failed to compile master catalog matrix:", err);
   }
 }
 
+// --- NEW: Advanced Multi-Source Loader ---
 async function loadProducts(forceRefresh = false) {
   const now = Date.now();
 
@@ -90,63 +88,70 @@ async function loadProducts(forceRefresh = false) {
   if (cachedProducts) return cachedProducts;
   if (fetchPromise) return fetchPromise;
 
-  // 1. Resolve from zero-read persistent LocalStorage cache across page transitions
-  const localCache = localStorage.getItem(CACHE_KEY);
-  const cacheExpiry = localStorage.getItem(CACHE_EXPIRY_KEY);
-
-  if (localCache && cacheExpiry && now < Number(cacheExpiry)) {
-    try {
-      const products = JSON.parse(localCache);
-      cachedProducts = products;
-      productsMap.clear();
-      products.forEach(p => productsMap.set(p.id, p));
-      return products;
-    } catch (err) { console.error('Error parsing local product cache data:', err); }
-  }
-
-  // 2. Fetch from Master Shards (Or Self-Heal if the database is blank)
   fetchPromise = (async () => {
-    try {
-      const metaRef = doc(db, 'store_data', 'catalog_meta');
-      const metaSnap = await getDoc(metaRef);
-      
-      let products = [];
-      
-      if (metaSnap.exists()) {
-        const shardCount = metaSnap.data().shardCount || 0;
-        const shardPromises = [];
+    let products = [];
+    const localCache = localStorage.getItem(CACHE_KEY);
+    const cacheExpiry = localStorage.getItem(CACHE_EXPIRY_KEY);
+
+    // 1. Fetch BASE Catalogue (from Cache or Shards)
+    if (localCache && cacheExpiry && now < Number(cacheExpiry)) {
+      try { products = JSON.parse(localCache); } 
+      catch (err) { console.error('Cache parsing failed:', err); }
+    }
+
+    if (products.length === 0) {
+      try {
+        const metaRef = doc(db, 'store_data', 'catalog_meta');
+        const metaSnap = await getDoc(metaRef);
         
-        for (let i = 0; i < shardCount; i++) {
-          shardPromises.push(getDoc(doc(db, 'master_catalog_shards', `shard_${i}`)));
+        if (metaSnap.exists()) {
+          const shardCount = metaSnap.data().shardCount || 0;
+          const shardPromises = [];
+          for (let i = 0; i < shardCount; i++) {
+            shardPromises.push(getDoc(doc(db, 'master_catalog_shards', `shard_${i}`)));
+          }
+          const shardSnaps = await Promise.all(shardPromises);
+          shardSnaps.forEach(snap => {
+            if (snap.exists()) { products = products.concat(snap.data().items || []); }
+          });
+        } else {
+          await syncMasterCatalog();
+          const snapshot = await getDocs(collection(db, 'products'));
+          products = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
         }
         
-        const shardSnaps = await Promise.all(shardPromises);
-        shardSnaps.forEach(snap => {
-          if (snap.exists()) { products = products.concat(snap.data().items || []); }
-        });
-      } else {
-        // SELF-HEALING FALLBACK: If catalog_meta is missing, force a rebuild automatically
-        console.warn("Catalog metadata missing! Recompiling architecture into automated shards...");
-        await syncMasterCatalog();
-        // Retry fetch after healing
-        const snapshot = await getDocs(collection(db, 'products'));
-        products = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+        localStorage.setItem(CACHE_KEY, JSON.stringify(products));
+        localStorage.setItem(CACHE_EXPIRY_KEY, (now + CACHE_TTL).toString());
+      } catch (err) {
+        console.error('Error loading products:', err);
+        return [];
       }
-      
-      cachedProducts = products;
-      productsMap.clear();
-      products.forEach(p => productsMap.set(p.id, p));
-
-      localStorage.setItem(CACHE_KEY, JSON.stringify(products));
-      localStorage.setItem(CACHE_EXPIRY_KEY, (now + CACHE_TTL).toString());
-
-      return products;
-    } catch (err) {
-      console.error('Error loading products:', err);
-      return [];
-    } finally {
-      fetchPromise = null; 
     }
+
+    // 2. --- NEW: Merge Flat Live Inventory into memory ---
+    try {
+      const liveSnap = await getDoc(doc(db, 'store_data', 'live_inventory'));
+      if (liveSnap.exists()) {
+        const liveData = liveSnap.data();
+        products = products.map(p => {
+          if (liveData[p.id] !== undefined) {
+            p.stock = liveData[p.id];
+            if (Number(p.stock) <= 0 && p.availability !== 'Pre Order') {
+              p.availability = 'Out of Stock';
+            }
+          }
+          return p;
+        });
+      }
+    } catch (e) {
+      console.warn("Live inventory check bypassed:", e);
+    }
+    // ----------------------------------------------------
+
+    cachedProducts = products;
+    productsMap.clear();
+    products.forEach(p => productsMap.set(p.id, p));
+    return products;
   })();
 
   return fetchPromise;
@@ -166,8 +171,7 @@ function calculateDeliveryFee(address) {
 // ====== ULTIMATE SPECIFICATION PARSER ======
 function parseSpecsData(specData) {
   if (!specData) return {};
-  if (typeof specData === 'object') return specData; 
-  
+  if (typeof specData === 'object') return specData;
   if (typeof specData === 'string') {
     let str = specData.trim();
     if (str.startsWith('{')) { try { return JSON.parse(str); } catch(e) {} }
@@ -203,7 +207,6 @@ function parseSpecsData(specData) {
 
     const escapedKeys = knownKeys.map(k => k.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')).join('|');
     const keyRegex = new RegExp(`\\b(${escapedKeys})\\s*:`, 'gi');
-    
     let matches = [];
     let match;
     while ((match = keyRegex.exec(str)) !== null) {
@@ -216,7 +219,6 @@ function parseSpecsData(specData) {
         const nextMatch = matches[i + 1];
         const valueStartIndex = currentMatch.end;
         const valueEndIndex = nextMatch ? nextMatch.index : str.length;
-        
         let value = str.substring(valueStartIndex, valueEndIndex).trim().replace(/\?$/, '').trim(); 
         const properKey = currentMatch.key.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
         if (value) specsObj[properKey] = value;
@@ -242,7 +244,7 @@ function parseSpecsData(specData) {
   return {};
 }
 
-// ====== GLOBAL EVENT: CROSS-PAGE SEARCH NAV ======
+// ====== CROSS-PAGE SEARCH NAV ======
 document.addEventListener('DOMContentLoaded', () => {
   const globalSearchInput = document.getElementById('global-search-input');
   if (globalSearchInput) {
@@ -276,7 +278,7 @@ window.addToCart = function(productId, qty = 1) {
   let cart = getCart();
   const existing = cart.find(item => item.id === productId);
   const finalPrice = Number(product.discount) > 0 ? (Number(product.price) - Number(product.discount)) : Number(product.price);
-
+  
   if (existing) {
     const newQty = existing.qty + qty;
     if (!isPreOrder && newQty > Number(product.stock)) {
@@ -351,10 +353,8 @@ function updateCartUI() {
         </div>
       </div>
     `;
-    
     div.querySelector('.qty-minus').addEventListener('click', () => updateCartQuantity(item.id, item.qty - 1));
     
-    // Check stock limit on increment
     div.querySelector('.qty-plus').addEventListener('click', () => {
       const product = productsMap.get(item.id);
       if (product && product.availability !== 'Pre Order' && (item.qty + 1) > Number(product.stock)) {
@@ -363,7 +363,6 @@ function updateCartUI() {
       }
       updateCartQuantity(item.id, item.qty + 1);
     });
-
     div.querySelector('.remove-btn').addEventListener('click', () => removeFromCart(item.id));
     itemsContainer.appendChild(div);
   });
@@ -388,19 +387,18 @@ function createProductCard(p, products) {
 
   const card = document.createElement('div');
   card.className = "group relative bg-surface-container-low rounded-xl overflow-hidden transition-all duration-500 hover:translate-y-[-8px] border border-white/5 hover:border-primary/30 flex flex-col";
-  
   let badgeHTML = '';
   if (p.hotDeal) badgeHTML += `<span class="bg-primary text-on-primary-fixed text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-widest shadow-xl mr-1 mb-1 inline-block">Hot Deal</span>`;
   if (isPreOrder) badgeHTML += `<span class="bg-purple-600 text-white text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-widest shadow-xl mr-1 mb-1 inline-block">Pre Order</span>`;
   if (isOOS) badgeHTML += `<span class="bg-red-900/80 text-red-200 text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-widest shadow-xl mr-1 mb-1 inline-block">Out of Stock</span>`;
   if (isUpcoming) badgeHTML += `<span class="bg-slate-700 text-slate-200 text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-widest shadow-xl mr-1 mb-1 inline-block">Upcoming</span>`;
-
+  
   card.innerHTML = `
     <div class="aspect-[4/5] bg-surface-container-lowest relative overflow-hidden cursor-pointer flex-shrink-0" onclick="window.location.href='product.html?slug=${slug}'">
       <img class="w-full h-full object-cover grayscale group-hover:grayscale-0 transition-all duration-700 scale-105 group-hover:scale-100" src="${images[0] || 'logo.png'}" alt="${p.name}">
       <div class="absolute top-4 left-4 right-4 flex flex-wrap z-10">${badgeHTML}</div>
-      ${!isOOS && !isUpcoming ? `
-      <button class="absolute bottom-4 right-4 w-12 h-12 bg-surface-bright/80 backdrop-blur-md rounded-full flex items-center justify-center text-primary opacity-0 group-hover:opacity-100 transition-all duration-300 translate-y-4 group-hover:translate-y-0 shadow-2xl z-20" data-id="${p.id}" onclick="event.stopPropagation(); window.addToCart('${p.id}'); alert('Added to cart!');">
+      ${!isOOS && !isUpcoming ?
+      `<button class="absolute bottom-4 right-4 w-12 h-12 bg-surface-bright/80 backdrop-blur-md rounded-full flex items-center justify-center text-primary opacity-0 group-hover:opacity-100 transition-all duration-300 translate-y-4 group-hover:translate-y-0 shadow-2xl z-20" data-id="${p.id}" onclick="event.stopPropagation(); window.addToCart('${p.id}'); alert('Added to cart!');">
         <span class="material-symbols-outlined pointer-events-none">add_shopping_cart</span>
       </button>` : ''}
     </div>
@@ -433,7 +431,7 @@ async function initHomePage() {
       const titleParts = randomProduct.name.split(' ');
       const p1 = titleParts.slice(0, 2).join(' ');
       const p2 = titleParts.slice(2).join(' ') || 'EDITION';
-
+      
       if(document.getElementById('hero-tag')) document.getElementById('hero-tag').textContent = `Featured ${randomProduct.category || 'Gear'}`;
       if(document.getElementById('hero-title')) {
         document.getElementById('hero-title').innerHTML = `${p1} <br/><span class="text-transparent bg-clip-text bg-gradient-to-br from-primary to-primary-container">${p2}</span>`;
@@ -456,7 +454,7 @@ async function initHomePage() {
   }
 
   if (productsContainer) {
-    productsContainer.innerHTML = ''; 
+    productsContainer.innerHTML = '';
     shuffle(products).slice(0, 8).forEach(p => productsContainer.appendChild(createProductCard(p, products)));
   }
 }
@@ -477,7 +475,6 @@ async function initProductsPage() {
   let currentPage = 1;
   const itemsPerPage = 21;
   let selectedSpecs = {};
-
   const categories = ['All', ...new Set(products.map(p => p.category).filter(Boolean))];
   
   if (categoryContainer) {
@@ -491,7 +488,7 @@ async function initProductsPage() {
 
   function buildDynamicSpecFiltersUI() {
     if (!dynamicSpecContainer) return;
-    const specMap = {}; 
+    const specMap = {};
     products.forEach(p => {
       const parsedSpecs = parseSpecsData(p.specs);
       if (Object.keys(parsedSpecs).length > 0 && !parsedSpecs["Details"]) {
@@ -505,7 +502,7 @@ async function initProductsPage() {
         });
       }
     });
-
+    
     dynamicSpecContainer.innerHTML = Object.entries(specMap).map(([specName, uniqueValues]) => {
       if (!selectedSpecs[specName]) selectedSpecs[specName] = [];
       const optionsHTML = Array.from(uniqueValues).map(val => {
@@ -544,7 +541,7 @@ async function initProductsPage() {
   const params = new URLSearchParams(window.location.search);
   const urlCategory = params.get('category');
   const urlSearch = params.get('search');
-
+  
   if (urlCategory && categoryContainer) {
      const targetRadio = document.querySelector(`input[name="cat-filter"][value="${urlCategory}"]`);
      if (targetRadio) targetRadio.checked = true;
@@ -553,7 +550,6 @@ async function initProductsPage() {
 
   function renderGrid() {
     let result = [...products];
-    
     if (searchInput && searchInput.value) {
       const q = searchInput.value.toLowerCase();
       result = result.filter(p => p.name.toLowerCase().includes(q) || (p.description && p.description.toLowerCase().includes(q)));
@@ -572,7 +568,7 @@ async function initProductsPage() {
         });
       }
     });
-
+    
     if (sortSelect) {
       const sortVal = sortSelect.value;
       if (sortVal === 'price-low') {
@@ -585,7 +581,7 @@ async function initProductsPage() {
     const totalPages = Math.ceil(result.length / itemsPerPage);
     if (currentPage > totalPages) currentPage = Math.max(1, totalPages);
     const paginatedItems = result.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
-
+    
     container.innerHTML = '';
     if (result.length === 0) {
       container.innerHTML = `<div class="col-span-full text-center py-12 text-outline bg-surface-container-low rounded-xl border border-white/5">No products found matching your criteria.</div>`;
@@ -613,7 +609,7 @@ async function initProductsPage() {
     prevBtn.disabled = currentPage === 1;
     prevBtn.onclick = () => { currentPage--; renderGrid(); window.scrollTo({top: 0, behavior: 'smooth'}); };
     paginationContainer.appendChild(prevBtn);
-
+    
     for (let i = 1; i <= totalPages; i++) {
       const pageBtn = document.createElement('button');
       pageBtn.className = `w-10 h-10 flex items-center justify-center font-black rounded-lg transition-all ${currentPage === i ? 'bg-primary text-on-primary-fixed shadow-lg shadow-primary/20' : 'text-outline hover:text-primary bg-surface-container-low hover:bg-surface-container border border-white/5'}`;
@@ -655,7 +651,7 @@ async function initProductPage() {
   const params = new URLSearchParams(window.location.search);
   const urlSlug = params.get('slug');
   if (!urlSlug || !document.getElementById('product-section')) return;
-
+  
   const products = await loadProducts();
   let product = null;
 
@@ -675,6 +671,7 @@ async function initProductPage() {
   
   const images = product.images || [];
   const mainImg = document.getElementById('main-image');
+  
   if (mainImg) {
     mainImg.src = images[0] || 'logo.png';
     mainImg.onclick = () => {
@@ -712,10 +709,10 @@ async function initProductPage() {
   
   const priceEl = document.getElementById('product-price');
   if (priceEl) priceEl.innerHTML = isUpcoming ? 'TBA' : `${hasDiscount ? `<s class="text-slate-500 text-xl mr-2">৳${price.toFixed(2)}</s> ` : ''}৳${finalPrice.toFixed(2)}`;
-
+  
   const metaDescEl = document.getElementById('product-meta-desc');
   if (metaDescEl) metaDescEl.textContent = product.metaDescription || product.description || 'No brief summary available for this item.';
-
+  
   const orderRow = document.getElementById('order-row');
   if (orderRow) {
     orderRow.innerHTML = '';
@@ -732,7 +729,6 @@ async function initProductPage() {
           Add to Cart
         </button>
       `;
-      
       document.getElementById('btn-buy-now').onclick = () => { window.location.href = `checkout.html?id=${product.id}`; };
       document.getElementById('btn-add-cart').onclick = () => { window.addToCart(product.id); alert('Added to cart!'); };
     }
@@ -779,7 +775,7 @@ async function initProductPage() {
   } catch(e) { console.error("Could not load other products", e); }
 }
 
-// ====== DEDICATED CHECKOUT ENGINE (WITH TRANSACTION & STOCK DEDUCTION) ======
+// ====== DEDICATED CHECKOUT ENGINE ======
 async function initCheckoutPage() {
   const urlParams = new URLSearchParams(window.location.search);
   const singleProductId = urlParams.get('id');
@@ -787,7 +783,7 @@ async function initCheckoutPage() {
 
   let checkoutItems = [];
   let hasPreOrder = false;
-
+  
   if (singleProductId) {
     const p = products.find(x => x.id === singleProductId);
     if (!p) {
@@ -848,6 +844,7 @@ async function initCheckoutPage() {
 
   const bkashRadio = document.getElementById('pay-bkash');
   const codRadio = document.getElementById('pay-cod');
+  
   if (hasPreOrder && codRadio) {
     codRadio.disabled = true;
     codRadio.parentElement?.classList.add('opacity-30', 'pointer-events-none');
@@ -857,7 +854,6 @@ async function initCheckoutPage() {
   function updateCheckoutTotals() {
     const address = document.getElementById('co-address')?.value || '';
     const deliveryFee = calculateDeliveryFee(address);
-    
     const deliveryDisplay = document.getElementById('co-delivery-display');
     if(deliveryDisplay) deliveryDisplay.textContent = `৳${deliveryFee.toFixed(2)}`;
 
@@ -873,7 +869,7 @@ async function initCheckoutPage() {
     const splitDisplay = document.getElementById('preorder-split-display');
 
     if (selectedMethod && payBox) payBox.classList.remove('hidden');
-
+    
     if (hasPreOrder) {
       const advance = Math.round((subtotal * 0.25) / 5) * 5;
       if(splitDisplay) splitDisplay.classList.remove('hidden');
@@ -894,7 +890,8 @@ async function initCheckoutPage() {
       if(splitDisplay) splitDisplay.classList.add('hidden');
       if(merchantLabel) merchantLabel.textContent = COD_NUMBER;
       if(txnContainer) txnContainer.classList.remove('hidden');
-      if(paymentNote) paymentNote.textContent = `Please send ONLY the delivery charge ৳${deliveryFee.toFixed(2)} to ${COD_NUMBER} via bKash Send Money to confirm. Subtotal collected on delivery.`;
+      if(paymentNote) paymentNote.textContent = `Please send ONLY the delivery charge ৳${deliveryFee.toFixed(2)} to ${COD_NUMBER} via bKash Send Money to confirm.
+Subtotal collected on delivery.`;
     }
   }
 
@@ -933,7 +930,7 @@ async function initCheckoutPage() {
       const deliveryFee = calculateDeliveryFee(address);
       const total = subtotal + deliveryFee;
       let paid = 0, due = 0;
-
+      
       if (hasPreOrder) {
         paid = Math.round((subtotal * 0.25) / 5) * 5;
         due = total - paid;
@@ -963,10 +960,10 @@ async function initCheckoutPage() {
           transactionId: txnId.toUpperCase(),
           status: 'Pending Verification'
         };
-
+        
         let generatedOrderId = '';
 
-        // Safely evaluate stock strictly against the core product documents
+        // --- NEW: THE SECURE CHECKOUT TRANSACTION ---
         await runTransaction(db, async (transaction) => {
           const productRefs = checkoutItems.map(item => doc(db, 'products', item.id));
           const productSnaps = await Promise.all(productRefs.map(ref => transaction.get(ref)));
@@ -980,29 +977,41 @@ async function initCheckoutPage() {
             const item = checkoutItems[i];
 
             if (currentStock !== -1 && data.availability !== 'Pre Order' && currentStock < item.qty) {
-              throw new Error(`Insufficient stock for ${item.name}. Only ${currentStock} left available.`);
+               throw new Error(`Insufficient stock for ${item.name}. Only ${currentStock} left available.`);
             }
           }
 
-          // Deduct the stock safely for all valid requested quantities from independent documents
+          const liveInventoryRef = doc(db, 'store_data', 'live_inventory');
+          const liveUpdates = {};
+
+          // Safely deduct stock for standard items
           for (let i = 0; i < checkoutItems.length; i++) {
             const snap = productSnaps[i];
             const data = snap.data();
             const currentStock = Number(data.stock);
             const item = checkoutItems[i];
-
+            
             if (currentStock !== -1 && data.availability !== 'Pre Order') {
-              transaction.update(productRefs[i], { stock: currentStock - item.qty });
+              const newStock = currentStock - item.qty;
+              transaction.update(productRefs[i], { stock: newStock }); // Update secure admin file
+              liveUpdates[item.id] = newStock;                         // Prep public map update
             }
           }
 
           const newOrderRef = doc(collection(db, 'orders'));
           transaction.set(newOrderRef, orderData);
           generatedOrderId = newOrderRef.id;
+
+          // Push new stock numbers to the live map instantly
+          if (Object.keys(liveUpdates).length > 0) {
+            transaction.set(liveInventoryRef, liveUpdates, { merge: true });
+          }
         });
         
-        // Push cache sync to background so transaction completes instantly
-        syncMasterCatalog().catch(err => console.warn('Background shard sync after checkout delayed:', err));
+        // Wipe local storage so their browser fetches the new stock numbers on next page load
+        localStorage.removeItem('store_products_data');
+        localStorage.removeItem('store_products_expiry');
+        // ------------------------------------------
 
         if (!singleProductId) {
           localStorage.removeItem('cart');
@@ -1063,7 +1072,7 @@ async function initAdminPanel() {
   const loginSection = document.getElementById('login-section');
   const dashboardSection = document.getElementById('dashboard-section');
   const logoutBtn = document.getElementById('logout-btn');
-
+  
   onAuthStateChanged(auth, user => {
     if (user) {
       if(loginSection) loginSection.classList.add('hidden');
@@ -1115,6 +1124,7 @@ async function setupInventoryAdmin() {
   }
 
   document.getElementById('tab-add')?.addEventListener('click', () => { switchToAddTab(true); });
+  
   document.getElementById('tab-manage')?.addEventListener('click', async () => {
     document.getElementById('tab-manage')?.classList.add('border-primary', 'text-primary');
     document.getElementById('tab-manage')?.classList.remove('border-transparent', 'text-slate-400');
@@ -1129,6 +1139,7 @@ async function setupInventoryAdmin() {
   function renderAdminProductsList() {
     if (!listContainer) return;
     listContainer.innerHTML = '';
+    
     products.forEach(p => {
       const div = document.createElement('div');
       div.className = 'bg-surface-container-low p-4 rounded-xl border border-white/5 flex flex-col md:flex-row gap-4 items-center justify-between hover:border-primary/30 transition-colors';
@@ -1170,7 +1181,7 @@ async function setupInventoryAdmin() {
         document.getElementById('form-title').textContent = 'Edit Product';
         document.getElementById('submit-btn').innerHTML = '<span class="material-symbols-outlined">save</span> Save Changes';
       };
-
+      
       div.querySelector('.del-btn').onclick = async () => {
         if(confirm(`Delete ${p.name}?`)) {
           await deleteDoc(doc(db, 'products', p.id));
@@ -1202,7 +1213,7 @@ async function setupInventoryAdmin() {
         images: imagesRaw,
         specs: document.getElementById('p-specs').value
       };
-
+      
       try {
         if (editingId) { await updateDoc(doc(db, 'products', editingId), data); alert('Updated!'); } 
         else { await addDoc(collection(db, 'products'), data); alert('Added!'); }
@@ -1218,7 +1229,7 @@ async function setupInventoryAdmin() {
 async function setupOrdersAdmin() {
   const listContainer = document.getElementById('orders-list');
   if (!listContainer) return;
-
+  
   async function loadAndRenderOrders() {
     listContainer.innerHTML = '<div class="p-8 text-center text-outline"><span class="material-symbols-outlined animate-spin">sync</span></div>';
     try {
@@ -1289,7 +1300,7 @@ async function setupOrdersAdmin() {
             </div>
           </div>
         `;
-
+        
         div.querySelector('.status-select').addEventListener('change', async (e) => {
           const newStatus = e.target.value;
           try {
@@ -1297,7 +1308,7 @@ async function setupOrdersAdmin() {
             loadAndRenderOrders();
           } catch(err) { alert("Failed to update status: " + err.message); }
         });
-
+        
         listContainer.appendChild(div);
       });
     } catch(err) {
