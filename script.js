@@ -1,6 +1,7 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js';
 import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/9.23.0/firebase-auth.js';
-import { getFirestore, collection, getDocs, addDoc, doc, updateDoc, deleteDoc, getDoc, orderBy, query, where, runTransaction } from 'https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js';
+// ADDED: setDoc imported to handle catalog initialization gracefully
+import { getFirestore, collection, getDocs, addDoc, doc, updateDoc, deleteDoc, getDoc, setDoc, orderBy, query, where, runTransaction } from 'https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js';
 import { firebaseConfig, BKASH_NUMBER, COD_NUMBER, DELIVERY_FEE } from './config.js';
 
 // ====== INITIALIZE FIREBASE ======
@@ -13,7 +14,7 @@ const productsMap = new Map();
 let cachedProducts = null;
 let fetchPromise = null;
 
-// The forceRefresh parameter ensures Admins can fetch new data after an edit/delete
+// OPTIMIZED: Now fetches exactly ONE document (1 read total) instead of scanning the whole collection
 async function loadProducts(forceRefresh = false) {
   if (forceRefresh) {
     cachedProducts = null;
@@ -25,14 +26,16 @@ async function loadProducts(forceRefresh = false) {
 
   fetchPromise = (async () => {
     try {
-      const snapshot = await getDocs(collection(db, 'products'));
-      const products = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      // Pulls all optimized product records from a single document container
+      const catalogSnap = await getDoc(doc(db, 'store_data', 'master_catalog'));
+      const products = catalogSnap.exists() ? (catalogSnap.data().items || []) : [];
+      
       cachedProducts = products;
       productsMap.clear();
       products.forEach(p => productsMap.set(p.id, p));
       return products;
     } catch (err) {
-      console.error('Error loading products:', err);
+      console.error('Error loading products from master catalog:', err);
       return [];
     } finally {
       fetchPromise = null; // Clean up so subsequent calls use cache or retry safely
@@ -244,7 +247,6 @@ function updateCartUI() {
     
     div.querySelector('.qty-minus').addEventListener('click', () => updateCartQuantity(item.id, item.qty - 1));
     
-    // Check stock limit on increment
     div.querySelector('.qty-plus').addEventListener('click', () => {
       const product = productsMap.get(item.id);
       if (product && product.availability !== 'Pre Order' && (item.qty + 1) > Number(product.stock)) {
@@ -660,7 +662,6 @@ async function initProductPage() {
     }
   }
 
-  // Wrapped Other Products safely
   try {
     const otherSection = document.getElementById('other-products');
     if (otherSection) {
@@ -864,6 +865,10 @@ async function initCheckoutPage() {
           const productRefs = checkoutItems.map(item => doc(db, 'products', item.id));
           const productSnaps = await Promise.all(productRefs.map(ref => transaction.get(ref)));
 
+          // OPTIMIZED: Fetch Master Catalog document reference atomically within the checkout transaction
+          const catalogRef = doc(db, 'store_data', 'master_catalog');
+          const catalogSnap = await transaction.get(catalogRef);
+
           // Phase 2: Validate Stock against all items requested
           for (let i = 0; i < checkoutItems.length; i++) {
             const snap = productSnaps[i];
@@ -873,13 +878,12 @@ async function initCheckoutPage() {
             const currentStock = Number(data.stock);
             const item = checkoutItems[i];
 
-            // If the item has a finite stock limitation and is NOT a pre-order, verify if we can fulfill it.
             if (currentStock !== -1 && data.availability !== 'Pre Order' && currentStock < item.qty) {
               throw new Error(`Insufficient stock for ${item.name}. Only ${currentStock} left available.`);
             }
           }
 
-          // Phase 3: Deduct the stock safely for all valid requested quantities
+          // Phase 3: Deduct the stock safely for all valid requested quantities from independent documents
           for (let i = 0; i < checkoutItems.length; i++) {
             const snap = productSnaps[i];
             const data = snap.data();
@@ -891,13 +895,25 @@ async function initCheckoutPage() {
             }
           }
 
+          // OPTIMIZED Phase 3.5: Deduct the stock fields within the Master Catalog array simultaneously
+          if (catalogSnap.exists()) {
+            const catalogData = catalogSnap.data();
+            const itemsList = catalogData.items || [];
+            checkoutItems.forEach(item => {
+              const catalogItem = itemsList.find(i => i.id === item.id);
+              if (catalogItem && Number(catalogItem.stock) !== -1 && catalogItem.availability !== 'Pre Order') {
+                catalogItem.stock = Number(catalogItem.stock) - item.qty;
+              }
+            });
+            transaction.update(catalogRef, { items: itemsList });
+          }
+
           // Phase 4: Commit Order Registration
           const newOrderRef = doc(collection(db, 'orders'));
           transaction.set(newOrderRef, orderData);
           generatedOrderId = newOrderRef.id;
         });
         
-        // Remove items from local cart if we were utilizing the cart view to checkout
         if (!singleProductId) {
           localStorage.removeItem('cart');
           updateCartUI();
@@ -985,6 +1001,17 @@ async function initAdminPanel() {
   if(logoutBtn) logoutBtn.addEventListener('click', () => signOut(auth));
 }
 
+// OPTIMIZED ADDITION: Admin sync function that re-compiles individual items to the master object array
+async function syncMasterCatalog() {
+  try {
+    const snapshot = await getDocs(collection(db, 'products'));
+    const productsList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    await setDoc(doc(db, 'store_data', 'master_catalog'), { items: productsList });
+  } catch (err) {
+    console.error("Critical: Failed to compile master catalog matrix:", err);
+  }
+}
+
 async function setupInventoryAdmin() {
   const form = document.getElementById('product-form');
   const listContainer = document.getElementById('admin-products-list');
@@ -1067,6 +1094,8 @@ async function setupInventoryAdmin() {
       div.querySelector('.del-btn').onclick = async () => {
         if(confirm(`Delete ${p.name}?`)) {
           await deleteDoc(doc(db, 'products', p.id));
+          // OPTIMIZED: Synchronize master catalog directly after backend item purge
+          await syncMasterCatalog();
           products = await loadProducts(true);
           renderAdminProductsList();
         }
@@ -1075,7 +1104,6 @@ async function setupInventoryAdmin() {
     });
   }
 
-  // ====== FIXED: CHANGED TO THE PROPERTY ASSIGNMENT (.onsubmit) ======
   if (form) {
     form.onsubmit = async (e) => {
       e.preventDefault();
@@ -1099,6 +1127,9 @@ async function setupInventoryAdmin() {
       try {
         if (editingId) { await updateDoc(doc(db, 'products', editingId), data); alert('Updated!'); } 
         else { await addDoc(collection(db, 'products'), data); alert('Added!'); }
+        
+        // OPTIMIZED: Update both backend records and master catalog array map cleanly
+        await syncMasterCatalog();
         products = await loadProducts(true);
         switchToAddTab(true); 
       } catch(err) { alert(err.message); }
@@ -1202,8 +1233,6 @@ async function setupOrdersAdmin() {
 
 // ====== GLOBAL INITIALIZATION ROUTER ======
 document.addEventListener('DOMContentLoaded', () => {
-  // Initiates fetching the products entirely in the background
-  // No longer locking the layout initialization
   loadProducts();
 
   try {
@@ -1212,7 +1241,6 @@ document.addEventListener('DOMContentLoaded', () => {
     console.warn("Cart update bypassed:", err);
   }
 
-  // GLOBAL UI NAV EVENTS
   document.getElementById('cart-link')?.addEventListener('click', () => {
     const slider = document.getElementById('cart-slider');
     if (slider) {
@@ -1235,7 +1263,6 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('image-viewer')?.classList.add('hidden');
   });
 
-  // NON-BLOCKING PAGE ROUTING WITH ERROR GUARDS
   const isHome = !!document.getElementById('interest-products');
   const isProducts = !!document.getElementById('products-grid');
   const isProduct = !!document.getElementById('product-section');
