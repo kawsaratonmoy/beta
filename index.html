@@ -93,27 +93,28 @@
 
 <body class="bg-background text-on-background">
 
-  <header class="bg-[#0c1322]/60 backdrop-blur-xl top-0 sticky z-50 border-b border-white/5">
-    <div class="flex justify-between items-center px-8 py-4 w-full max-w-screen-2xl mx-auto">
+<header class="bg-[#0c1322]/80 backdrop-blur-xl top-0 sticky z-[60] border-b border-white/5">
+    <div class="flex justify-between items-center px-6 lg:px-8 py-4 w-full max-w-screen-2xl mx-auto">
       <a href="index.html" class="flex items-center gap-2 text-2xl font-bold tracking-tighter text-transparent bg-clip-text bg-gradient-to-br from-purple-200 to-purple-400 font-['Space_Grotesk']">
-        <img src="logo.png" alt="The Geek Shop Logo" class="h-10 object-contain inline-block">
+        <img src="logo.png" alt="The Geek Shop Logo" class="h-10 object-contain inline-block" onerror="this.style.display='none'">
         <span>The Geek Shop</span>
       </a>
+      
+      <div class="hidden md:flex items-center relative w-96">
+        <span class="material-symbols-outlined absolute left-3 text-slate-500 text-sm">search</span>
+        <input type="text" id="global-search-input" placeholder="Search components globally..." class="w-full bg-surface-container-lowest border border-white/5 rounded-xl pl-9 pr-4 py-2 text-sm text-on-surface focus:outline-none focus:border-primary/50 focus:ring-0 placeholder:text-outline-variant transition-all">
+      </div>
+
       <nav class="hidden md:flex items-center space-x-8 font-['Space_Grotesk'] tracking-tight">
         <a class="text-slate-400 hover:text-purple-200 transition-colors" href="products.html">Products</a>
         <a class="text-slate-400 hover:text-purple-200 transition-colors" href="status.html">Order Status</a>
       </nav>
+      
       <div class="flex items-center gap-6">
-        <div class="hidden lg:flex items-center bg-surface-container-low px-4 py-2 rounded-xl border border-white/5">
-          <span class="material-symbols-outlined text-slate-500 mr-2">search</span>
-          <input class="bg-transparent border-none focus:ring-0 text-sm w-48 text-on-surface placeholder-slate-500" placeholder="Search products..." type="text"/>
-        </div>
-        <div class="flex items-center gap-4 text-purple-300">
-          <button id="cart-link" class="active:scale-95 duration-150 relative p-1">
-            <span class="material-symbols-outlined text-2xl">shopping_cart</span>
-            <span id="cart-count" class="absolute -top-1 -right-2 bg-purple-500 text-white text-[10px] font-bold rounded-full h-5 w-5 flex items-center justify-center border border-[#0c1322]">0</span>
-          </button>
-        </div>
+        <button id="cart-link" class="active:scale-95 duration-150 relative p-2 bg-surface-container-low rounded-xl border border-white/5 hover:bg-surface-variant transition-all">
+          <span class="material-symbols-outlined text-slate-300 block">shopping_cart</span>
+          <span id="cart-count" class="absolute -top-2 -right-2 bg-purple-500 text-white text-[10px] font-bold rounded-full h-5 w-5 flex items-center justify-center border border-[#0c1322]">0</span>
+        </button>
       </div>
     </div>
   </header>
@@ -266,6 +267,21 @@
       </button>
     </div>
   </div>
-
+<footer class="bg-slate-950 w-full py-12 px-8 border-t border-white/5 bg-slate-900">
+<div class="flex flex-col md:flex-row justify-between items-center gap-8 max-w-screen-2xl mx-auto font-['Inter'] text-xs tracking-widest text-slate-500">
+<div class="font-['Space_Grotesk'] text-lg font-bold text-slate-200">
+                THE GEEK SHOP
+            </div>
+<div class="flex gap-8">
+<a class="text-slate-600 hover:text-purple-300 transition-opacity opacity-80 hover:opacity-100" href="/termsandconditions.html">Terms and Conditions</a>
+<a class="text-slate-600 hover:text-purple-300 transition-opacity opacity-80 hover:opacity-100" href="https://www.facebook.com/thegeek.shop0">Facebook</a>
+<a class="text-slate-600 hover:text-purple-300 transition-opacity opacity-80 hover:opacity-100" href="https://www.instagram.com/thegeek.shop0">Instagram</a>
+<a class="text-slate-600 hover:text-purple-300 transition-opacity opacity-80 hover:opacity-100" href="https://wa.me/01960902526">WhatsApp</a>
+</div>
+<div class="opacity-80">
+                © 2026 THE GEEK SHOP. 
+            </div>
+</div>
+</footer>
 </body>
 </html>

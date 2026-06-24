@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8"/>
   <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
-  <title>Logistics Terminal | KINETIC LABS</title>
+  <title>Logistics Terminal | THE GEEK SHOP</title>
   <link rel="icon" type="image/x-icon" href="logo t.png"> 
   <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
@@ -69,40 +69,34 @@
 
 <body class="bg-background text-on-background font-body selection:bg-primary-container selection:text-on-primary-container min-h-screen flex flex-col">
   
-  <nav class="fixed top-0 w-full z-50 bg-background/80 backdrop-blur-xl border-b border-white/5">
-    <div class="flex justify-between items-center px-8 py-4 w-full max-w-7xl mx-auto">
-      <a href="index.html" class="text-2xl font-bold tracking-tighter text-primary font-headline">THE GEEK SHOP</a>
-      <div class="hidden md:flex items-center gap-8">
-        <a class="text-sm font-label uppercase tracking-widest text-outline hover:text-primary transition-colors" href="products.html">Shop</a>
-        <a class="text-sm font-label uppercase tracking-widest text-primary border-b border-primary/40 pb-0.5" href="status.html">Order Status</a>
+<header class="bg-[#0c1322]/80 backdrop-blur-xl top-0 sticky z-[60] border-b border-white/5">
+    <div class="flex justify-between items-center px-6 lg:px-8 py-4 w-full max-w-screen-2xl mx-auto">
+      <a href="index.html" class="flex items-center gap-2 text-2xl font-bold tracking-tighter text-transparent bg-clip-text bg-gradient-to-br from-purple-200 to-purple-400 font-['Space_Grotesk']">
+        <img src="logo.png" alt="The Geek Shop Logo" class="h-10 object-contain inline-block" onerror="this.style.display='none'">
+        <span>The Geek Shop</span>
+      </a>
+      
+      <div class="hidden md:flex items-center relative w-96">
+        <span class="material-symbols-outlined absolute left-3 text-slate-500 text-sm">search</span>
+        <input type="text" id="global-search-input" placeholder="Search components globally..." class="w-full bg-surface-container-lowest border border-white/5 rounded-xl pl-9 pr-4 py-2 text-sm text-on-surface focus:outline-none focus:border-primary/50 focus:ring-0 placeholder:text-outline-variant transition-all">
       </div>
+
+      <nav class="hidden md:flex items-center space-x-8 font-['Space_Grotesk'] tracking-tight">
+        <a class="text-slate-400 hover:text-purple-200 transition-colors" href="products.html">Products</a>
+        <a class=" text-purple-300 border-b-2 border-purple-400 pb-1" href="status.html">Order Status</a>
+      </nav>
+     
       <div class="flex items-center gap-6">
-        <button id="cart-link" class="text-primary hover:text-primary-container transition-transform active:scale-95 flex items-center gap-1 relative">
-          <span class="material-symbols-outlined">shopping_cart</span>
-          <span id="cart-count" class="absolute -top-2 -right-2 bg-primary-container text-on-primary-container text-[10px] font-bold rounded-full h-4 w-4 flex items-center justify-center">0</span>
+        <button id="cart-link" class="active:scale-95 duration-150 relative p-2 bg-surface-container-low rounded-xl border border-white/5 hover:bg-surface-variant transition-all">
+          <span class="material-symbols-outlined text-slate-300 block">shopping_cart</span>
+          <span id="cart-count" class="absolute -top-2 -right-2 bg-purple-500 text-white text-[10px] font-bold rounded-full h-5 w-5 flex items-center justify-center border border-[#0c1322]">0</span>
         </button>
       </div>
     </div>
-  </nav>
+  </header>
 
   <main class="pt-16 pb-20 data-stream relative flex-grow overflow-x-hidden">
-    <header class="max-w-7xl mx-auto px-8 py-16 md:py-24 relative">
-      <div class="border-l-2 border-primary/30 pl-8 relative z-10">
-        <div class="flex items-center gap-3 mb-4">
-          <div class="w-2 h-2 rounded-full bg-primary animate-pulse"></div>
-          <span class="font-label font-bold uppercase tracking-[0.3em] text-primary text-[10px]">Logistics Interface v2.4.0 // Access Granted</span>
-        </div>
-        <h1 class="text-5xl md:text-8xl font-headline font-bold tracking-tighter mb-6 uppercase">Track Gear</h1>
-        <p class="text-lg text-on-surface-variant max-w-xl font-light leading-relaxed">System awaiting communication tether. Enter registered numeric identifier to synchronize shipment metadata.</p>
-      </div>
-      <div class="absolute top-24 -right-12 rotate-90 origin-left hidden xl:block">
-        <div class="ticker-container bg-surface-container-low/50 py-1 border-x border-primary/20 backdrop-blur-sm w-[400px]">
-          <div class="ticker-content text-[10px] font-label text-primary/40 uppercase tracking-widest">
-            SYSTEM READY... SCANNING LATTICE... SHIPMENT INCOMING... CACHE UPDATED... 0X2F4A9... SYSTEM READY...
-          </div>
-        </div>
-      </div>
-    </header>
+
 
     <section class="max-w-7xl mx-auto px-8 mb-16">
       <div class="bg-surface-container-lowest/80 border border-primary/10 scanner-glow p-1 rounded-sm relative group overflow-hidden">
@@ -203,18 +197,22 @@
       <span class="text-[10px] font-bold uppercase tracking-tighter mt-1">Status</span>
     </a>
   </nav>
-
-  <footer class="w-full py-12 mt-auto bg-surface-container-lowest border-t border-white/5 pb-24 md:pb-12">
-    <div class="flex flex-col md:flex-row justify-between items-center px-8 gap-8 max-w-7xl mx-auto">
-      <div class="flex flex-col gap-1 text-center md:text-left">
-        <div class="text-xl font-headline font-black text-on-surface tracking-tighter uppercase">The Geek Shop</div>
-        <div class="text-[9px] font-label text-outline uppercase tracking-widest">Terminal Build 0xAF92 // 2024</div>
-      </div>
-      <div class="text-outline font-label uppercase tracking-[0.2em] text-[9px] border border-white/5 px-4 py-2">
-        © ALL RIGHTS RESERVED
-      </div>
-    </div>
-  </footer>
+<footer class="bg-slate-950 w-full py-12 px-8 border-t border-white/5 bg-slate-900">
+<div class="flex flex-col md:flex-row justify-between items-center gap-8 max-w-screen-2xl mx-auto font-['Inter'] text-xs tracking-widest text-slate-500">
+<div class="font-['Space_Grotesk'] text-lg font-bold text-slate-200">
+                THE GEEK SHOP
+            </div>
+<div class="flex gap-8">
+<a class="text-slate-600 hover:text-purple-300 transition-opacity opacity-80 hover:opacity-100" href="/termsandconditions.html">Terms and Conditions</a>
+<a class="text-slate-600 hover:text-purple-300 transition-opacity opacity-80 hover:opacity-100" href="https://www.facebook.com/thegeek.shop0">Facebook</a>
+<a class="text-slate-600 hover:text-purple-300 transition-opacity opacity-80 hover:opacity-100" href="https://www.instagram.com/thegeek.shop0">Instagram</a>
+<a class="text-slate-600 hover:text-purple-300 transition-opacity opacity-80 hover:opacity-100" href="https://wa.me/01960902526">WhatsApp</a>
+</div>
+<div class="opacity-80">
+                © 2026 THE GEEK SHOP. 
+            </div>
+</div>
+</footer>
 
   <div id="cart-slider" class="fixed top-0 right-0 h-full w-full max-w-md bg-surface-container/95 backdrop-blur-xl border-l border-white/5 shadow-2xl z-[100] transform translate-x-full transition-transform duration-300 flex flex-col hidden">
     <div class="p-6 border-b border-outline-variant/10 flex justify-between items-center">
