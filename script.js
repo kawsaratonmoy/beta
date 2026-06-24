@@ -1,6 +1,6 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js';
 import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/9.23.0/firebase-auth.js';
-import { getFirestore, collection, getDocs, addDoc, doc, updateDoc, deleteDoc, getDoc, orderBy, query, where, runTransaction } from 'https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js';
+import { getFirestore, collection, getDocs, addDoc, doc, updateDoc, deleteDoc, getDoc, setDoc, orderBy, query, where, runTransaction } from 'https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js';
 import { firebaseConfig, BKASH_NUMBER, COD_NUMBER, DELIVERY_FEE } from './config.js';
 
 // ====== INITIALIZE FIREBASE ======
@@ -31,7 +31,7 @@ async function loadProducts(forceRefresh = false) {
   if (cachedProducts) return cachedProducts;
   if (fetchPromise) return fetchPromise;
 
-  // 1. Attempt to resolve from persistent LocalStorage cache
+  // 1. Attempt to resolve from persistent LocalStorage cache (0 Reads across pages)
   const localCache = localStorage.getItem(CACHE_KEY);
   const cacheExpiry = localStorage.getItem(CACHE_EXPIRY_KEY);
 
@@ -47,11 +47,26 @@ async function loadProducts(forceRefresh = false) {
     }
   }
 
-  // 2. Fetch from network database if cache is stale, missing, or forced
+  // 2. Fetch from Master Catalog (1 Read) OR Self-Heal if it doesn't exist yet
   fetchPromise = (async () => {
     try {
-      const snapshot = await getDocs(collection(db, 'products'));
-      const products = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      const catalogRef = doc(db, 'store_data', 'master_catalog');
+      const catalogSnap = await getDoc(catalogRef);
+      
+      let products = [];
+      
+      if (catalogSnap.exists()) {
+        // Master catalog exists! Standard 1-read operation.
+        products = catalogSnap.data().items || [];
+      } else {
+        // SELF-HEALING FALLBACK: Catalog doesn't exist yet. Pull products manually once and build it.
+        console.warn("Master catalog missing! Automatically compiling it from individual products...");
+        const snapshot = await getDocs(collection(db, 'products'));
+        products = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+        
+        // Save it to Firestore so it exists for the next second/visitor
+        await setDoc(catalogRef, { items: products });
+      }
       
       cachedProducts = products;
       productsMap.clear();
@@ -63,7 +78,7 @@ async function loadProducts(forceRefresh = false) {
 
       return products;
     } catch (err) {
-      console.error('Error loading products from Firebase:', err);
+      console.error('Error loading products:', err);
       return [];
     } finally {
       fetchPromise = null; 
@@ -181,6 +196,7 @@ function getCart() {
   return cart ? JSON.parse(cart) : [];
 }
 
+// Fixed function signature to accept parameters directly instead of referencing window block objects blindly
 function saveCart(cart) {
   localStorage.setItem('cart', JSON.stringify(cart));
   updateCartUI();
@@ -275,7 +291,6 @@ function updateCartUI() {
     
     div.querySelector('.qty-minus').addEventListener('click', () => updateCartQuantity(item.id, item.qty - 1));
     
-    // Check stock limit on increment
     div.querySelector('.qty-plus').addEventListener('click', () => {
       const product = productsMap.get(item.id);
       if (product && product.availability !== 'Pre Order' && (item.qty + 1) > Number(product.stock)) {
@@ -637,7 +652,6 @@ async function initProductPage() {
   const metaDescEl = document.getElementById('product-meta-desc');
   if (metaDescEl) metaDescEl.textContent = product.metaDescription || product.description || 'No brief summary available for this item.';
 
-  // ====== DEDICATED CHECKOUT REDIRECT ======
   const orderRow = document.getElementById('order-row');
   if (orderRow) {
     orderRow.innerHTML = '';
@@ -691,7 +705,6 @@ async function initProductPage() {
     }
   }
 
-  // Wrapped Other Products safely
   try {
     const otherSection = document.getElementById('other-products');
     if (otherSection) {
@@ -702,7 +715,7 @@ async function initProductPage() {
   } catch(e) { console.error("Could not load other products", e); }
 }
 
-// ====== DEDICATED CHECKOUT ENGINE (WITH TRANSACTION & STOCK DEDUCTION) ======
+// ====== DEDICATED CHECKOUT ENGINE ======
 async function initCheckoutPage() {
   const urlParams = new URLSearchParams(window.location.search);
   const singleProductId = urlParams.get('id');
@@ -889,13 +902,13 @@ async function initCheckoutPage() {
 
         let generatedOrderId = '';
 
-        // Execute Transaction to strictly verify and deduct stock on backend
         await runTransaction(db, async (transaction) => {
-          // Phase 1: Fetch documents securely within transaction
           const productRefs = checkoutItems.map(item => doc(db, 'products', item.id));
           const productSnaps = await Promise.all(productRefs.map(ref => transaction.get(ref)));
 
-          // Phase 2: Validate Stock against all items requested
+          const catalogRef = doc(db, 'store_data', 'master_catalog');
+          const catalogSnap = await transaction.get(catalogRef);
+
           for (let i = 0; i < checkoutItems.length; i++) {
             const snap = productSnaps[i];
             if (!snap.exists()) throw new Error(`Inventory mismatch: Product ${checkoutItems[i].name} does not exist in backend.`);
@@ -904,13 +917,11 @@ async function initCheckoutPage() {
             const currentStock = Number(data.stock);
             const item = checkoutItems[i];
 
-            // If the item has a finite stock limitation and is NOT a pre-order, verify if we can fulfill it.
             if (currentStock !== -1 && data.availability !== 'Pre Order' && currentStock < item.qty) {
               throw new Error(`Insufficient stock for ${item.name}. Only ${currentStock} left available.`);
             }
           }
 
-          // Phase 3: Deduct the stock safely for all valid requested quantities
           for (let i = 0; i < checkoutItems.length; i++) {
             const snap = productSnaps[i];
             const data = snap.data();
@@ -922,13 +933,23 @@ async function initCheckoutPage() {
             }
           }
 
-          // Phase 4: Commit Order Registration
+          if (catalogSnap.exists()) {
+            const catalogData = catalogSnap.data();
+            const itemsList = catalogData.items || [];
+            checkoutItems.forEach(item => {
+              const catalogItem = itemsList.find(i => i.id === item.id);
+              if (catalogItem && Number(catalogItem.stock) !== -1 && catalogItem.availability !== 'Pre Order') {
+                catalogItem.stock = Number(catalogItem.stock) - item.qty;
+              }
+            });
+            transaction.update(catalogRef, { items: itemsList });
+          }
+
           const newOrderRef = doc(collection(db, 'orders'));
           transaction.set(newOrderRef, orderData);
           generatedOrderId = newOrderRef.id;
         });
         
-        // Remove items from local cart if we were utilizing the cart view to checkout
         if (!singleProductId) {
           localStorage.removeItem('cart');
           updateCartUI();
@@ -1016,6 +1037,16 @@ async function initAdminPanel() {
   if(logoutBtn) logoutBtn.addEventListener('click', () => signOut(auth));
 }
 
+async function syncMasterCatalog() {
+  try {
+    const snapshot = await getDocs(collection(db, 'products'));
+    const productsList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    await setDoc(doc(db, 'store_data', 'master_catalog'), { items: productsList });
+  } catch (err) {
+    console.error("Critical: Failed to compile master catalog matrix:", err);
+  }
+}
+
 async function setupInventoryAdmin() {
   const form = document.getElementById('product-form');
   const listContainer = document.getElementById('admin-products-list');
@@ -1040,13 +1071,14 @@ async function setupInventoryAdmin() {
   }
 
   document.getElementById('tab-add')?.addEventListener('click', () => { switchToAddTab(true); });
-  document.getElementById('tab-manage')?.addEventListener('click', () => {
+  document.getElementById('tab-manage')?.addEventListener('click', async () => {
     document.getElementById('tab-manage')?.classList.add('border-primary', 'text-primary');
     document.getElementById('tab-manage')?.classList.remove('border-transparent', 'text-slate-400');
     document.getElementById('tab-add')?.classList.remove('border-primary', 'text-primary');
     document.getElementById('tab-add')?.classList.add('border-transparent', 'text-slate-400');
     document.getElementById('view-manage')?.classList.remove('hidden');
     document.getElementById('view-add')?.classList.add('hidden');
+    products = await loadProducts();
     renderAdminProductsList();
   });
 
@@ -1098,6 +1130,7 @@ async function setupInventoryAdmin() {
       div.querySelector('.del-btn').onclick = async () => {
         if(confirm(`Delete ${p.name}?`)) {
           await deleteDoc(doc(db, 'products', p.id));
+          await syncMasterCatalog();
           products = await loadProducts(true);
           renderAdminProductsList();
         }
@@ -1129,6 +1162,8 @@ async function setupInventoryAdmin() {
       try {
         if (editingId) { await updateDoc(doc(db, 'products', editingId), data); alert('Updated!'); } 
         else { await addDoc(collection(db, 'products'), data); alert('Added!'); }
+        
+        await syncMasterCatalog();
         products = await loadProducts(true);
         switchToAddTab(true); 
       } catch(err) { alert(err.message); }
@@ -1176,7 +1211,6 @@ async function setupOrdersAdmin() {
               <h3 class="font-bold text-lg">${o.customerName}</h3>
               <div class="text-sm text-outline flex items-center gap-3 mt-1">
                 <a href="tel:${o.phone}" class="hover:text-primary transition-colors flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">call</span> ${o.phone}</a>
-                ${o.facebook ? `<a href="${o.facebook}" target="_blank" class="hover:text-[#1877F2] transition-colors flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">link</span> Profile</a>` : ''}
               </div>
             </div>
             <div class="flex flex-col items-end gap-2">
@@ -1240,7 +1274,6 @@ document.addEventListener('DOMContentLoaded', () => {
     console.warn("Cart update bypassed:", err);
   }
 
-  // GLOBAL UI NAV EVENTS
   document.getElementById('cart-link')?.addEventListener('click', () => {
     const slider = document.getElementById('cart-slider');
     if (slider) {
@@ -1263,7 +1296,6 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('image-viewer')?.classList.add('hidden');
   });
 
-  // NON-BLOCKING PAGE ROUTING WITH ERROR GUARDS
   const isHome = !!document.getElementById('interest-products');
   const isProducts = !!document.getElementById('products-grid');
   const isProduct = !!document.getElementById('product-section');
