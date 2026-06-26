@@ -9,6 +9,7 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 
 // ====== GLOBAL UTILS & MEMOIZED CACHING ======
+const MAX_ITEMS_PER_SHARD = 100;
 const productsMap = new Map();
 let cachedProducts = null;
 let fetchPromise = null;
@@ -17,64 +18,45 @@ const CACHE_KEY = 'store_products_data';
 const CACHE_EXPIRY_KEY = 'store_products_expiry';
 const CACHE_TTL = 5 * 60 * 1000;
 
-// ====== DYNAMIC BYTE-SIZE SHARDING ENGINE ======
-async function rebuildCatalogShards(productsList) {
-  const MAX_BYTES = 800000;
-  const chunks = [];
+// ====== EMERGENCY FULL MATRIX REBUILD ======
+// Automatically runs once to migrate your existing store to the Ledger system
+async function emergencyRebuildMatrix() {
+  const snapshot = await getDocs(collection(db, 'products'));
+  const productsList = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+
+  const liveInventoryMap = {};
+  const productMap = {};
+  let currentShardId = 0;
   let currentChunk = [];
-  let currentByteSize = 0;
 
-  for (const product of productsList) {
-    const productString = JSON.stringify(product);
-    const productBytes = new Blob([productString]).size;
-    if (currentByteSize + productBytes > MAX_BYTES && currentChunk.length > 0) {
-      chunks.push(currentChunk);
+  for (const p of productsList) {
+    liveInventoryMap[p.id] = p.stock;
+    productMap[p.id] = currentShardId;
+    currentChunk.push(p);
+
+    if (currentChunk.length >= MAX_ITEMS_PER_SHARD) {
+      await setDoc(doc(db, 'master_catalog_shards', `shard_${currentShardId}`), { items: currentChunk });
+      currentShardId++;
       currentChunk = [];
-      currentByteSize = 0;
-    }
-    currentChunk.push(product);
-    currentByteSize += productBytes;
-  }
-
-  if (currentChunk.length > 0) chunks.push(currentChunk);
-
-  const metaRef = doc(db, 'store_data', 'catalog_meta');
-  const metaSnap = await getDoc(metaRef);
-  const oldShardCount = metaSnap.exists() ? (metaSnap.data().shardCount || 0) : 0;
-
-  for (let i = 0; i < chunks.length; i++) {
-    await setDoc(doc(db, 'master_catalog_shards', `shard_${i}`), { items: chunks[i] });
-  }
-
-  if (oldShardCount > chunks.length) {
-    for (let i = chunks.length; i < oldShardCount; i++) {
-      try { await deleteDoc(doc(db, 'master_catalog_shards', `shard_${i}`)); } 
-      catch (e) { console.warn(`Cleanup skipped for shard_${i}`); }
     }
   }
 
-  await setDoc(metaRef, { shardCount: chunks.length });
-}
-
-// Background sync function used by Admin tools
-async function syncMasterCatalog() {
-  try {
-    const snapshot = await getDocs(collection(db, 'products'));
-    const productsList = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-    
-    // --- Generate the Flat Live Inventory Map ---
-    const liveInventoryMap = {};
-    productsList.forEach(p => { liveInventoryMap[p.id] = p.stock; });
-    await setDoc(doc(db, 'store_data', 'live_inventory'), liveInventoryMap);
-
-    await rebuildCatalogShards(productsList);
-  } catch (err) {
-    console.error("Critical: Failed to compile master catalog matrix:", err);
-    throw err;
+  if (currentChunk.length > 0) {
+    await setDoc(doc(db, 'master_catalog_shards', `shard_${currentShardId}`), { items: currentChunk });
+  } else {
+    currentShardId = Math.max(0, currentShardId - 1);
   }
+
+  await setDoc(doc(db, 'store_data', 'shard_ledger'), {
+    activeShard: currentShardId,
+    shardCount: currentShardId + 1,
+    productMap: productMap
+  });
+
+  await setDoc(doc(db, 'store_data', 'live_inventory'), liveInventoryMap);
 }
 
-// --- Advanced Multi-Source Loader ---
+// ====== 1. OPTIMIZED CATALOG LOADER (~3 READS) ======
 async function loadProducts(forceRefresh = false) {
   const now = Date.now();
 
@@ -100,24 +82,27 @@ async function loadProducts(forceRefresh = false) {
 
     if (products.length === 0) {
       try {
-        const metaRef = doc(db, 'store_data', 'catalog_meta');
-        const metaSnap = await getDoc(metaRef);
+        const ledgerRef = doc(db, 'store_data', 'shard_ledger');
+        let ledgerSnap = await getDoc(ledgerRef);
         
-        if (metaSnap.exists()) {
-          const shardCount = metaSnap.data().shardCount || 0;
-          const shardPromises = [];
-          for (let i = 0; i < shardCount; i++) {
-            shardPromises.push(getDoc(doc(db, 'master_catalog_shards', `shard_${i}`)));
-          }
-          const shardSnaps = await Promise.all(shardPromises);
-          shardSnaps.forEach(snap => {
-            if (snap.exists()) { products = products.concat(snap.data().items || []); }
-          });
-        } else {
-          await syncMasterCatalog();
-          const snapshot = await getDocs(collection(db, 'products'));
-          products = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+        // Auto-migration if ledger doesn't exist yet
+        if (!ledgerSnap.exists()) {
+          console.warn("Ledger missing. Running initial migration to Delta Sync...");
+          await emergencyRebuildMatrix();
+          ledgerSnap = await getDoc(ledgerRef);
         }
+        
+        const shardCount = ledgerSnap.data().shardCount || 1;
+        const shardPromises = [];
+        
+        for (let i = 0; i < shardCount; i++) {
+          shardPromises.push(getDoc(doc(db, 'master_catalog_shards', `shard_${i}`)));
+        }
+        
+        const shardSnaps = await Promise.all(shardPromises);
+        shardSnaps.forEach(snap => {
+          if (snap.exists()) { products = products.concat(snap.data().items || []); }
+        });
         
         localStorage.setItem(CACHE_KEY, JSON.stringify(products));
         localStorage.setItem(CACHE_EXPIRY_KEY, (now + CACHE_TTL).toString());
@@ -153,6 +138,75 @@ async function loadProducts(forceRefresh = false) {
   })();
 
   return fetchPromise;
+}
+
+// ====== 2. INCREMENTAL DELTA SYNC ENGINE (2 READS) ======
+async function syncSingleProductToMatrix(productData, isDelete = false) {
+  const ledgerRef = doc(db, 'store_data', 'shard_ledger');
+  let ledgerSnap = await getDoc(ledgerRef);
+  
+  if (!ledgerSnap.exists()) {
+    await emergencyRebuildMatrix();
+    ledgerSnap = await getDoc(ledgerRef);
+  }
+  
+  let ledgerData = ledgerSnap.data();
+  const productId = productData.id;
+  
+  // CASE A: EDITING OR DELETING
+  if (ledgerData.productMap[productId] !== undefined) {
+    const targetShardId = ledgerData.productMap[productId];
+    const shardRef = doc(db, 'master_catalog_shards', `shard_${targetShardId}`);
+    const shardSnap = await getDoc(shardRef);
+    
+    if (shardSnap.exists()) {
+      let items = shardSnap.data().items || [];
+      items = items.filter(item => item.id !== productId);
+      if (!isDelete) items.push(productData);
+      await updateDoc(shardRef, { items: items });
+    }
+    
+    if (isDelete) {
+      delete ledgerData.productMap[productId];
+      await updateDoc(ledgerRef, { productMap: ledgerData.productMap });
+      
+      // Also remove from live inventory map
+      const inventoryRef = doc(db, 'store_data', 'live_inventory');
+      const invSnap = await getDoc(inventoryRef);
+      if(invSnap.exists()) {
+        const invData = invSnap.data();
+        delete invData[productId];
+        await setDoc(inventoryRef, invData);
+      }
+    }
+    return;
+  }
+  
+  // CASE B: ADDING A BRAND NEW PRODUCT
+  if (!isDelete) {
+    let currentShardId = ledgerData.activeShard;
+    let shardRef = doc(db, 'master_catalog_shards', `shard_${currentShardId}`);
+    let shardSnap = await getDoc(shardRef);
+    let items = shardSnap.exists() ? (shardSnap.data().items || []) : [];
+    
+    if (items.length >= MAX_ITEMS_PER_SHARD) {
+      currentShardId += 1;
+      shardRef = doc(db, 'master_catalog_shards', `shard_${currentShardId}`);
+      items = [];
+      ledgerData.activeShard = currentShardId;
+      ledgerData.shardCount = currentShardId + 1;
+    }
+    
+    items.push(productData);
+    await setDoc(shardRef, { items: items });
+    
+    ledgerData.productMap[productId] = currentShardId;
+    await updateDoc(ledgerRef, { 
+      activeShard: ledgerData.activeShard,
+      shardCount: ledgerData.shardCount,
+      productMap: ledgerData.productMap 
+    });
+  }
 }
 
 function shuffle(array) {
@@ -1101,9 +1155,9 @@ async function setupInventoryAdmin() {
   let products = await loadProducts();
 
   function switchToAddTab(isResetting = true) {
-    document.getElementById('tab-add')?.classList.add('bg-surface-container', 'text-primary');
+    document.getElementById('tab-add')?.classList.add('bg-surface-container-low', 'text-primary');
     document.getElementById('tab-add')?.classList.remove('bg-transparent', 'text-outline');
-    document.getElementById('tab-manage')?.classList.remove('bg-surface-container', 'text-primary');
+    document.getElementById('tab-manage')?.classList.remove('bg-surface-container-low', 'text-primary');
     document.getElementById('tab-manage')?.classList.add('bg-transparent', 'text-outline');
     
     document.getElementById('view-add')?.classList.remove('hidden');
@@ -1120,9 +1174,9 @@ async function setupInventoryAdmin() {
   document.getElementById('tab-add')?.addEventListener('click', () => { switchToAddTab(true); });
   
   document.getElementById('tab-manage')?.addEventListener('click', async () => {
-    document.getElementById('tab-manage')?.classList.add('bg-surface-container', 'text-primary');
+    document.getElementById('tab-manage')?.classList.add('bg-surface-container-low', 'text-primary');
     document.getElementById('tab-manage')?.classList.remove('bg-transparent', 'text-outline');
-    document.getElementById('tab-add')?.classList.remove('bg-surface-container', 'text-primary');
+    document.getElementById('tab-add')?.classList.remove('bg-surface-container-low', 'text-primary');
     document.getElementById('tab-add')?.classList.add('bg-transparent', 'text-outline');
     document.getElementById('view-manage')?.classList.remove('hidden');
     document.getElementById('view-add')?.classList.add('hidden');
@@ -1134,12 +1188,14 @@ async function setupInventoryAdmin() {
     syncBtn.addEventListener('click', async () => {
       syncBtn.disabled = true;
       const originalHTML = syncBtn.innerHTML;
-      syncBtn.innerHTML = `<span class="material-symbols-outlined animate-spin text-sm">sync</span> Syncing Live Matrix...`;
+      syncBtn.innerHTML = `<span class="material-symbols-outlined animate-spin text-sm">sync</span> Forcing Matrix Rebuild...`;
       try {
-        await syncMasterCatalog();
-        alert('Master parameters successfully built into production catalog shards.');
+        await emergencyRebuildMatrix();
+        products = await loadProducts(true);
+        renderAdminProductsList();
+        alert('Master matrix forcibly rebuilt. Shards and Ledgers are perfectly synced.');
       } catch (err) {
-        alert('Failed production build matrix sync: ' + err.message);
+        alert('Failed rebuild sync: ' + err.message);
       } finally {
         syncBtn.innerHTML = originalHTML;
         syncBtn.disabled = false;
@@ -1194,8 +1250,9 @@ async function setupInventoryAdmin() {
       };
       
       div.querySelector('.del-btn').onclick = async () => {
-        if(confirm(`Delete ${p.name}? Note: Changes won't go live until you click 'Publish Changes'.`)) {
+        if(confirm(`Delete ${p.name}? This will remove it instantly.`)) {
           await deleteDoc(doc(db, 'products', p.id));
+          await syncSingleProductToMatrix({ id: p.id }, true);
           products = await loadProducts(true);
           renderAdminProductsList();
         }
@@ -1227,11 +1284,23 @@ async function setupInventoryAdmin() {
       try {
         if (editingId) { 
           await updateDoc(doc(db, 'products', editingId), data); 
-          alert('Saved locally. Click "Publish Changes to Live Store" to upload across shards.'); 
+          data.id = editingId;
+          await syncSingleProductToMatrix(data, false);
+          
+          const inventoryRef = doc(db, 'store_data', 'live_inventory');
+          await updateDoc(inventoryRef, { [data.id]: data.stock });
+          
+          alert('Product successfully updated and deployed!'); 
         } 
         else { 
-          await addDoc(collection(db, 'products'), data); 
-          alert('Added locally. Click "Publish Changes to Live Store" to upload across shards.'); 
+          const docRef = await addDoc(collection(db, 'products'), data); 
+          data.id = docRef.id;
+          await syncSingleProductToMatrix(data, false);
+          
+          const inventoryRef = doc(db, 'store_data', 'live_inventory');
+          await updateDoc(inventoryRef, { [data.id]: data.stock });
+          
+          alert('New product successfully added and deployed!'); 
         }
         products = await loadProducts(true);
         switchToAddTab(true); 
