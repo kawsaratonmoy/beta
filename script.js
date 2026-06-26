@@ -19,6 +19,7 @@ const CACHE_EXPIRY_KEY = 'store_products_expiry';
 const CACHE_TTL = 5 * 60 * 1000;
 
 // ====== EMERGENCY FULL MATRIX REBUILD ======
+// Automatically runs once to migrate your existing store to the Ledger system
 async function emergencyRebuildMatrix() {
   const snapshot = await getDocs(collection(db, 'products'));
   const productsList = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -84,8 +85,10 @@ async function loadProducts(forceRefresh = false) {
         const ledgerRef = doc(db, 'store_data', 'shard_ledger');
         let ledgerSnap = await getDoc(ledgerRef);
         
+        // Auto-migration if ledger doesn't exist yet
         if (!ledgerSnap.exists()) {
           console.warn("Ledger missing. Checking privileges...");
+          // Ensure ONLY authenticated admins attempt the matrix rebuild
           if (auth.currentUser) {
               console.log("Admin detected. Running initial migration to Delta Sync...");
               await emergencyRebuildMatrix();
@@ -96,6 +99,7 @@ async function loadProducts(forceRefresh = false) {
           }
         }
         
+        // Ensure ledgerSnap exists before proceeding
         if (ledgerSnap.exists()) {
             const shardCount = ledgerSnap.data().shardCount || 1;
             const shardPromises = [];
@@ -118,6 +122,7 @@ async function loadProducts(forceRefresh = false) {
       }
     }
 
+    // Merge Flat Live Inventory into memory
     try {
       const liveSnap = await getDoc(doc(db, 'store_data', 'live_inventory'));
       if (liveSnap.exists()) {
@@ -162,6 +167,7 @@ async function syncSingleProductToMatrix(productData, isDelete = false) {
   let ledgerData = ledgerSnap.data();
   const productId = productData.id;
   
+  // CASE A: EDITING OR DELETING
   if (ledgerData.productMap[productId] !== undefined) {
     const targetShardId = ledgerData.productMap[productId];
     const shardRef = doc(db, 'master_catalog_shards', `shard_${targetShardId}`);
@@ -178,6 +184,7 @@ async function syncSingleProductToMatrix(productData, isDelete = false) {
       delete ledgerData.productMap[productId];
       await updateDoc(ledgerRef, { productMap: ledgerData.productMap });
       
+      // Also remove from live inventory map
       const inventoryRef = doc(db, 'store_data', 'live_inventory');
       const invSnap = await getDoc(inventoryRef);
       if(invSnap.exists()) {
@@ -189,6 +196,7 @@ async function syncSingleProductToMatrix(productData, isDelete = false) {
     return;
   }
   
+  // CASE B: ADDING A BRAND NEW PRODUCT
   if (!isDelete) {
     let currentShardId = ledgerData.activeShard;
     let shardRef = doc(db, 'master_catalog_shards', `shard_${currentShardId}`);
@@ -546,6 +554,33 @@ async function initProductsPage() {
 
   function buildDynamicSpecFiltersUI() {
     if (!dynamicSpecContainer) return;
+
+    // Constrain the entire dynamic filters container so it never pushes down the page navigation
+    dynamicSpecContainer.className = "space-y-5 pt-4 border-t border-white/5 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar";
+
+    // Inject premium, low-profile custom scrollbar styles to match your dark/stealth theme
+    if (!document.getElementById('custom-filter-scrollbar-style')) {
+      const style = document.createElement('style');
+      style.id = 'custom-filter-scrollbar-style';
+      style.innerHTML = `
+        .custom-scrollbar::-webkit-scrollbar {
+          width: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+          background: rgba(255, 255, 255, 0.02);
+          border-radius: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+          background: rgba(255, 255, 255, 0.1);
+          border-radius: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+          background: rgba(255, 255, 255, 0.2);
+        }
+      `;
+      document.head.appendChild(style);
+    }
+
     const specMap = {};
     
     // Determine context category
@@ -570,7 +605,7 @@ async function initProductsPage() {
         });
       }
     });
-    
+
     // Prune out checked parameters that are invalid or absent in the updated context
     Object.keys(selectedSpecs).forEach(specName => {
       if (!specMap[specName]) {
@@ -593,9 +628,9 @@ async function initProductsPage() {
       }).join('');
       
       return `
-        <div class="space-y-2">
+        <div class="space-y-2 pb-3 border-b border-white/5 last:border-0">
           <label class="text-[10px] font-bold uppercase tracking-widest text-outline block capitalize">${specName}</label>
-          <div class="space-y-1 max-h-40 overflow-y-auto pr-1">${optionsHTML}</div>
+          <div class="space-y-1 max-h-32 overflow-y-auto pr-1 custom-scrollbar">${optionsHTML}</div>
         </div>
       `;
     }).join('');
