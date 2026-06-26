@@ -18,6 +18,42 @@ const CACHE_KEY = 'store_products_data';
 const CACHE_EXPIRY_KEY = 'store_products_expiry';
 const CACHE_TTL = 5 * 60 * 1000;
 
+// ====== SLICK TOAST NOTIFICATION ======
+function showToast(message) {
+  let container = document.getElementById('toast-container');
+  if (!container) {
+    container = document.createElement('div');
+    container.id = 'toast-container';
+    container.className = 'fixed top-6 left-1/2 -translate-x-1/2 z-[300] flex flex-col gap-2 pointer-events-none w-full max-w-sm px-4';
+    document.body.appendChild(container);
+  }
+
+  const toast = document.createElement('div');
+  toast.className = 'bg-surface-container-high/95 backdrop-blur-md text-on-surface text-xs font-bold uppercase tracking-wider px-5 py-3 rounded-xl border border-primary/20 shadow-2xl flex items-center gap-3 transition-all duration-300 opacity-0 -translate-y-2 pointer-events-auto';
+  toast.innerHTML = `
+    <span class="material-symbols-outlined text-primary text-lg">shopping_bag</span>
+    <span class="flex-1 truncate">${message}</span>
+  `;
+
+  container.appendChild(toast);
+
+  // Trigger smooth enter animation
+  setTimeout(() => {
+    toast.classList.remove('opacity-0', '-translate-y-2');
+  }, 10);
+
+  // Autohide & clean up DOM container after 1.5 seconds
+  setTimeout(() => {
+    toast.classList.add('opacity-0', '-translate-y-2');
+    setTimeout(() => {
+      toast.remove();
+      if (container.children.length === 0) {
+        container.remove();
+      }
+    }, 300);
+  }, 1500);
+}
+
 // ====== EMERGENCY FULL MATRIX REBUILD ======
 // Automatically runs once to migrate your existing store to the Ledger system
 async function emergencyRebuildMatrix() {
@@ -88,7 +124,6 @@ async function loadProducts(forceRefresh = false) {
         // Auto-migration if ledger doesn't exist yet
         if (!ledgerSnap.exists()) {
           console.warn("Ledger missing. Checking privileges...");
-          // Ensure ONLY authenticated admins attempt the matrix rebuild
           if (auth.currentUser) {
               console.log("Admin detected. Running initial migration to Delta Sync...");
               await emergencyRebuildMatrix();
@@ -99,7 +134,6 @@ async function loadProducts(forceRefresh = false) {
           }
         }
         
-        // Ensure ledgerSnap exists before proceeding
         if (ledgerSnap.exists()) {
             const shardCount = ledgerSnap.data().shardCount || 1;
             const shardPromises = [];
@@ -122,7 +156,6 @@ async function loadProducts(forceRefresh = false) {
       }
     }
 
-    // Merge Flat Live Inventory into memory
     try {
       const liveSnap = await getDoc(doc(db, 'store_data', 'live_inventory'));
       if (liveSnap.exists()) {
@@ -167,7 +200,6 @@ async function syncSingleProductToMatrix(productData, isDelete = false) {
   let ledgerData = ledgerSnap.data();
   const productId = productData.id;
   
-  // CASE A: EDITING OR DELETING
   if (ledgerData.productMap[productId] !== undefined) {
     const targetShardId = ledgerData.productMap[productId];
     const shardRef = doc(db, 'master_catalog_shards', `shard_${targetShardId}`);
@@ -184,7 +216,6 @@ async function syncSingleProductToMatrix(productData, isDelete = false) {
       delete ledgerData.productMap[productId];
       await updateDoc(ledgerRef, { productMap: ledgerData.productMap });
       
-      // Also remove from live inventory map
       const inventoryRef = doc(db, 'store_data', 'live_inventory');
       const invSnap = await getDoc(inventoryRef);
       if(invSnap.exists()) {
@@ -196,7 +227,6 @@ async function syncSingleProductToMatrix(productData, isDelete = false) {
     return;
   }
   
-  // CASE B: ADDING A BRAND NEW PRODUCT
   if (!isDelete) {
     let currentShardId = ledgerData.activeShard;
     let shardRef = doc(db, 'master_catalog_shards', `shard_${currentShardId}`);
@@ -360,6 +390,7 @@ window.addToCart = function(productId, qty = 1) {
     cart.push({ id: productId, name: product.name, color: product.color || '', price: finalPrice, image: product.images?.[0] || 'logo.png', qty: qty, isPreOrder: isPreOrder });
   }
   saveCart(cart);
+  showToast('Added to cart!');
 }
 
 function removeFromCart(productId) {
@@ -464,7 +495,7 @@ function createProductCard(p, products) {
       <img class="w-full h-full object-cover grayscale group-hover:grayscale-0 transition-all duration-700 scale-105 group-hover:scale-100" src="${images[0] || 'logo.png'}" alt="${p.name}">
       <div class="absolute top-4 left-4 right-4 flex flex-wrap z-10">${badgeHTML}</div>
       ${!isOOS && !isUpcoming ?
-      `<button class="absolute bottom-4 right-4 w-12 h-12 bg-surface-bright/80 backdrop-blur-md rounded-full flex items-center justify-center text-primary opacity-0 group-hover:opacity-100 transition-all duration-300 translate-y-4 group-hover:translate-y-0 shadow-2xl z-20" data-id="${p.id}" onclick="event.stopPropagation(); window.addToCart('${p.id}'); alert('Added to cart!');">
+      `<button class="absolute bottom-4 right-4 w-12 h-12 bg-surface-bright/80 backdrop-blur-md rounded-full flex items-center justify-center text-primary opacity-0 group-hover:opacity-100 transition-all duration-300 translate-y-4 group-hover:translate-y-0 shadow-2xl z-20" data-id="${p.id}" onclick="event.stopPropagation(); window.addToCart('${p.id}');">
         <span class="material-symbols-outlined pointer-events-none">add_shopping_cart</span>
       </button>` : ''}
     </div>
@@ -555,10 +586,8 @@ async function initProductsPage() {
   function buildDynamicSpecFiltersUI() {
     if (!dynamicSpecContainer) return;
 
-    // Constrain the entire dynamic filters container so it never pushes down the page navigation
     dynamicSpecContainer.className = "space-y-5 pt-4 border-t border-white/5 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar";
 
-    // Inject premium, low-profile custom scrollbar styles to match your dark/stealth theme
     if (!document.getElementById('custom-filter-scrollbar-style')) {
       const style = document.createElement('style');
       style.id = 'custom-filter-scrollbar-style';
@@ -582,12 +611,9 @@ async function initProductsPage() {
     }
 
     const specMap = {};
-    
-    // Determine context category
     const checkedCat = document.querySelector('input[name="cat-filter"]:checked');
     const currentCategory = checkedCat ? checkedCat.value : 'All';
 
-    // Context-sensitive extraction logic
     const contextualProducts = currentCategory === 'All' 
       ? products 
       : products.filter(p => p.category === currentCategory);
@@ -598,15 +624,19 @@ async function initProductsPage() {
         Object.entries(parsedSpecs).forEach(([key, val]) => {
           if (key && val && key.toLowerCase() !== 'id') {
             const formattedKey = key.trim();
-            const formattedVal = val.toString().trim();
-            if (!specMap[formattedKey]) specMap[formattedKey] = new Set();
-            specMap[formattedKey].add(formattedVal);
+            // Requirement 1: Strip standard brackets and contents inside them for the filter option list
+            let formattedVal = val.toString().trim();
+            formattedVal = formattedVal.replace(/\s*[\(\[][^\]\)]*[\)\]]/g, '').trim();
+            
+            if (formattedVal) {
+              if (!specMap[formattedKey]) specMap[formattedKey] = new Set();
+              specMap[formattedKey].add(formattedVal);
+            }
           }
         });
       }
     });
 
-    // Prune out checked parameters that are invalid or absent in the updated context
     Object.keys(selectedSpecs).forEach(specName => {
       if (!specMap[specName]) {
         delete selectedSpecs[specName];
@@ -676,7 +706,11 @@ async function initProductsPage() {
       if (allowedValues.length > 0) {
         result = result.filter(p => {
           const parsedSpecs = parseSpecsData(p.specs);
-          return parsedSpecs[specKey] && allowedValues.includes(parsedSpecs[specKey].toString().trim());
+          if (!parsedSpecs[specKey]) return false;
+          // Requirement 1: Normalize product value contents by removing brackets before checking allowed selection inclusions
+          const productSpecVal = parsedSpecs[specKey].toString().trim();
+          const cleanedProductSpecVal = productSpecVal.replace(/\s*[\(\[][^\]\)]*[\)\]]/g, '').trim();
+          return allowedValues.includes(cleanedProductSpecVal);
         });
       }
     });
@@ -753,12 +787,11 @@ async function initProductsPage() {
 
   if (searchInput) searchInput.addEventListener('input', () => { currentPage = 1; renderGrid(); });
   if (sortSelect) sortSelect.addEventListener('change', () => { currentPage = 1; renderGrid(); });
-  
   if (categoryContainer) {
-    categoryContainer.addEventListener('change', () => { 
-      currentPage = 1; 
-      buildDynamicSpecFiltersUI(); 
-      renderGrid(); 
+    categoryContainer.addEventListener('change', () => {
+      currentPage = 1;
+      buildDynamicSpecFiltersUI();
+      renderGrid();
     });
   }
 
@@ -770,7 +803,7 @@ async function initProductPage() {
   const params = new URLSearchParams(window.location.search);
   const urlSlug = params.get('slug');
   if (!urlSlug || !document.getElementById('product-section')) return;
-  
+
   const products = await loadProducts();
   let product = null;
 
@@ -787,10 +820,8 @@ async function initProductPage() {
   }
 
   document.title = product.metaTitle || product.name;
-  
   const images = product.images || [];
   const mainImg = document.getElementById('main-image');
-  
   if (mainImg) {
     mainImg.src = images[0] || 'logo.png';
     mainImg.onclick = () => {
@@ -802,36 +833,50 @@ async function initProductPage() {
   const thumbGallery = document.getElementById('thumbnail-gallery');
   if (thumbGallery) {
     thumbGallery.innerHTML = '';
-    images.slice(0, 4).forEach(src => {
-      const wrapper = document.createElement('div');
-      wrapper.className = "aspect-square bg-surface-container-high rounded-lg overflow-hidden border border-outline-variant/20 cursor-pointer";
-      wrapper.innerHTML = `<img src="${src}" class="w-full h-full object-cover grayscale hover:grayscale-0 transition-all">`;
-      wrapper.onclick = () => { mainImg.src = src; };
-      thumbGallery.appendChild(wrapper);
+    images.forEach((img) => {
+      const thumb = document.createElement('img');
+      thumb.src = img;
+      thumb.className = "w-20 h-20 object-cover rounded-lg cursor-pointer border border-white/5 hover:border-primary transition-all";
+      thumb.onerror = () => { thumb.src = 'logo.png'; };
+      thumb.onclick = () => { if (mainImg) mainImg.src = img; };
+      thumbGallery.appendChild(thumb);
     });
   }
 
   if (document.getElementById('product-name')) document.getElementById('product-name').textContent = product.name;
-  
-  const badgesContainer = document.getElementById('product-badges');
-  if (badgesContainer) {
-    badgesContainer.innerHTML = '';
-    if (product.hotDeal) badgesContainer.innerHTML += `<span class="bg-primary-container text-on-primary-container text-[10px] font-bold px-3 py-1 rounded-full tracking-widest uppercase">Hot Deal</span>`;
-    if (product.availability === 'Pre Order') badgesContainer.innerHTML += `<span class="bg-purple-600 text-white text-[10px] font-bold px-3 py-1 rounded-full tracking-widest uppercase">Pre Order</span>`;
-    badgesContainer.innerHTML += `<span class="bg-surface-container-highest text-primary text-[10px] font-bold px-3 py-1 rounded-full tracking-widest uppercase">${product.availability || 'In Stock'}</span>`;
+  if (document.getElementById('product-category')) document.getElementById('product-category').textContent = product.category || 'Gear';
+  if (document.getElementById('product-desc')) document.getElementById('product-desc').textContent = product.description || '';
+  if (document.getElementById('product-detailed-desc')) document.getElementById('product-detailed-desc').innerHTML = product.detailedDescription || 'No detailed log provided.';
+
+  const specsTable = document.getElementById('product-specs-table');
+  if (specsTable) {
+    specsTable.innerHTML = '';
+    const parsedSpecs = parseSpecsData(product.specs);
+    if (Object.keys(parsedSpecs).length > 0) {
+      Object.entries(parsedSpecs).forEach(([k, v]) => {
+        const row = document.createElement('tr');
+        row.className = "border-b border-white/5";
+        row.innerHTML = `
+          <td class="py-3 px-4 text-sm font-bold text-outline capitalize">${k}</td>
+          <td class="py-3 px-4 text-sm text-on-surface">${v}</td>
+        `;
+        specsTable.appendChild(row);
+      });
+    } else {
+      specsTable.innerHTML = `<tr><td class="py-4 text-center text-outline">No specifications cataloged.</td></tr>`;
+    }
   }
-  
+
   const isUpcoming = product.availability === 'Upcoming';
   const hasDiscount = Number(product.discount) > 0;
   const price = Number(product.price) || 0;
   const finalPrice = hasDiscount ? (price - Number(product.discount)) : price;
-  
   const priceEl = document.getElementById('product-price');
   if (priceEl) priceEl.innerHTML = isUpcoming ? 'TBA' : `${hasDiscount ? `<s class="text-slate-500 text-xl mr-2">৳${price.toFixed(2)}</s> ` : ''}৳${finalPrice.toFixed(2)}`;
-  
+
   const metaDescEl = document.getElementById('product-meta-desc');
   if (metaDescEl) metaDescEl.textContent = product.metaDescription || product.description || 'No brief summary available for this item.';
-  
+
   const orderRow = document.getElementById('order-row');
   if (orderRow) {
     orderRow.innerHTML = '';
@@ -849,60 +894,20 @@ async function initProductPage() {
         </button>
       `;
       document.getElementById('btn-buy-now').onclick = () => { window.location.href = `checkout.html?id=${product.id}`; };
-      document.getElementById('btn-add-cart').onclick = () => { window.addToCart(product.id); alert('Added to cart!'); };
+      document.getElementById('btn-add-cart').onclick = () => {
+        window.addToCart(product.id);
+      };
     }
   }
-
-  if (document.getElementById('product-detailed-desc')) {
-    document.getElementById('product-detailed-desc').innerHTML = product.detailedDescription || product.description || '<p>No detailed background information available.</p>';
-  }
-
-  const specsGrid = document.getElementById('product-specs-grid');
-  if (specsGrid) {
-    specsGrid.innerHTML = '';
-    const parsedSpecs = parseSpecsData(product.specs);
-    
-    if (Object.keys(parsedSpecs).length > 0 && !parsedSpecs["Details"]) {
-      Object.entries(parsedSpecs).forEach(([key, value]) => {
-        if (key.toLowerCase() !== 'id' && value.trim() !== '') {
-          specsGrid.innerHTML += `
-            <div class="flex flex-col sm:flex-row sm:justify-between items-start sm:items-center py-4 border-b border-white/5 last:border-0 gap-2 sm:gap-4">
-              <span class="text-slate-400 font-medium whitespace-nowrap">${key}</span>
-              <span class="font-display font-medium text-left sm:text-right text-slate-200">${value}</span>
-            </div>`;
-        }
-      });
-    } else if (parsedSpecs["Details"]) {
-      specsGrid.innerHTML = `<div class="text-slate-300 text-sm leading-relaxed">${parsedSpecs["Details"]}</div>`;
-    } else {
-      specsGrid.innerHTML = `
-        <div class="flex justify-between items-center py-3 border-b border-white/5">
-          <span class="text-slate-400 font-medium">Category</span>
-          <span class="font-display font-medium text-right text-slate-200">${product.category || 'N/A'}</span>
-        </div>
-      `;
-    }
-  }
-
-  try {
-    const otherSection = document.getElementById('other-products');
-    if (otherSection) {
-      otherSection.innerHTML = '';
-      const eligible = products.filter(p => p.availability !== 'Upcoming' && p.id !== product.id);
-      shuffle(eligible).slice(0, 4).forEach(p => otherSection.appendChild(createProductCard(p, products)));
-    }
-  } catch(e) { console.error("Could not load other products", e); }
 }
 
-// ====== DEDICATED CHECKOUT ENGINE ======
 async function initCheckoutPage() {
-  const urlParams = new URLSearchParams(window.location.search);
-  const singleProductId = urlParams.get('id');
+  const params = new URLSearchParams(window.location.search);
+  const singleProductId = params.get('id');
   const products = await loadProducts();
-
   let checkoutItems = [];
   let hasPreOrder = false;
-  
+
   if (singleProductId) {
     const p = products.find(x => x.id === singleProductId);
     if (!p) {
@@ -911,15 +916,7 @@ async function initCheckoutPage() {
       return;
     }
     const unitPrice = Number(p.price) - Number(p.discount || 0);
-    checkoutItems.push({
-      id: p.id,
-      name: p.name,
-      color: p.color || '',
-      price: unitPrice,
-      image: p.images?.[0] || 'logo.png',
-      qty: 1, 
-      isPreOrder: p.availability === 'Pre Order'
-    });
+    checkoutItems.push({ id: p.id, name: p.name, color: p.color || '', price: unitPrice, image: p.images?.[0] || 'logo.png', qty: 1, isPreOrder: p.availability === 'Pre Order' });
     if (p.availability === 'Pre Order') hasPreOrder = true;
   } else {
     const cart = getCart();
@@ -947,7 +944,7 @@ async function initCheckoutPage() {
       subtotal += itemTotal;
       itemsList.innerHTML += `
         <div class="flex gap-4 items-center bg-surface-container-lowest p-3 rounded-xl border border-white/5">
-          <img src="${item.image}" class="w-16 h-16 object-cover rounded-lg bg-surface-variant">
+          <img src="${item.image}" class="w-16 h-16 object-cover rounded-lg bg-surface-variant" onerror="this.src='logo.png'">
           <div class="flex-grow">
             <h4 class="font-headline text-sm font-bold text-on-surface">${item.name}</h4>
             <p class="text-xs text-outline mb-1">Color: ${item.color || 'Base'} | Qty: ${item.qty}</p>
@@ -961,56 +958,44 @@ async function initCheckoutPage() {
   const subtotalDisplay = document.getElementById('co-subtotal-display');
   if (subtotalDisplay) subtotalDisplay.textContent = `৳${subtotal.toFixed(2)}`;
 
-  const bkashRadio = document.getElementById('pay-bkash');
-  const codRadio = document.getElementById('pay-cod');
-  
-  if (hasPreOrder && codRadio) {
-    codRadio.disabled = true;
-    codRadio.parentElement?.classList.add('opacity-30', 'pointer-events-none');
-    if (bkashRadio) bkashRadio.checked = true;
-  }
-
   function updateCheckoutTotals() {
     const address = document.getElementById('co-address')?.value || '';
     const deliveryFee = calculateDeliveryFee(address);
-    const deliveryDisplay = document.getElementById('co-delivery-display');
-    if(deliveryDisplay) deliveryDisplay.textContent = `৳${deliveryFee.toFixed(2)}`;
-
     const total = subtotal + deliveryFee;
+
+    const feeDisplay = document.getElementById('co-shipping-display');
+    if (feeDisplay) feeDisplay.textContent = `৳${deliveryFee}`;
+
     const totalDisplay = document.getElementById('co-total-display');
-    if(totalDisplay) totalDisplay.textContent = `৳${total.toFixed(2)}`;
+    if (totalDisplay) totalDisplay.textContent = `৳${total.toFixed(2)}`;
+
+    const splitDisplay = document.getElementById('preorder-split-display');
+    const merchantLabel = document.getElementById('merchant-number');
+    const txnContainer = document.getElementById('txn-container');
+    const paymentNote = document.getElementById('payment-note');
 
     const selectedMethod = document.querySelector('input[name="payment_method"]:checked')?.value;
-    const payBox = document.getElementById('payment-details-box');
-    const merchantLabel = document.getElementById('co-merchant-number');
-    const txnContainer = document.getElementById('txn-container');
-    const paymentNote = document.getElementById('co-payment-note');
-    const splitDisplay = document.getElementById('preorder-split-display');
 
-    if (selectedMethod && payBox) payBox.classList.remove('hidden');
-    
     if (hasPreOrder) {
+      if (splitDisplay) splitDisplay.classList.remove('hidden');
       const advance = Math.round((subtotal * 0.25) / 5) * 5;
-      if(splitDisplay) splitDisplay.classList.remove('hidden');
-      if(document.getElementById('co-advance-display')) document.getElementById('co-advance-display').textContent = `৳${advance.toFixed(2)}`;
-      if(document.getElementById('co-due-display')) document.getElementById('co-due-display').textContent = `৳${(total - advance).toFixed(2)}`;
+      const remaining = total - advance;
+      if (document.getElementById('co-advance-display')) document.getElementById('co-advance-display').textContent = `৳${advance}`;
+      if (document.getElementById('co-remaining-display')) document.getElementById('co-remaining-display').textContent = `৳${remaining}`;
       
-      if(merchantLabel) merchantLabel.textContent = BKASH_NUMBER;
-      if(txnContainer) txnContainer.classList.remove('hidden');
-      if(paymentNote) paymentNote.textContent = `Please send 25% advance ৳${advance.toFixed(2)} to ${BKASH_NUMBER} via bKash Send Money to confirm pre-order.`;
-    } 
-    else if (selectedMethod === 'Bkash') {
-      if(splitDisplay) splitDisplay.classList.add('hidden');
-      if(merchantLabel) merchantLabel.textContent = BKASH_NUMBER;
-      if(txnContainer) txnContainer.classList.remove('hidden');
-      if(paymentNote) paymentNote.textContent = `Please send total ৳${total.toFixed(2)} to ${BKASH_NUMBER} via bKash Send Money.`;
-    } 
-    else if (selectedMethod === 'Cash on Delivery') {
-      if(splitDisplay) splitDisplay.classList.add('hidden');
-      if(merchantLabel) merchantLabel.textContent = COD_NUMBER;
-      if(txnContainer) txnContainer.classList.remove('hidden');
-      if(paymentNote) paymentNote.textContent = `Please send ONLY the delivery charge ৳${deliveryFee.toFixed(2)} to ${COD_NUMBER} via bKash Send Money to confirm.
-Subtotal collected on delivery.`;
+      if (merchantLabel) merchantLabel.textContent = BKASH_NUMBER;
+      if (txnContainer) txnContainer.classList.remove('hidden');
+      if (paymentNote) paymentNote.textContent = `Pre-orders require a 25% commitment fee (৳${advance}) via bKash Send Money to process.`;
+    } else if (selectedMethod === 'Bkash') {
+      if (splitDisplay) splitDisplay.classList.add('hidden');
+      if (merchantLabel) merchantLabel.textContent = BKASH_NUMBER;
+      if (txnContainer) txnContainer.classList.remove('hidden');
+      if (paymentNote) paymentNote.textContent = `Please send total ৳${total.toFixed(2)} to ${BKASH_NUMBER} via bKash Send Money.`;
+    } else if (selectedMethod === 'Cash on Delivery') {
+      if (splitDisplay) splitDisplay.classList.add('hidden');
+      if (merchantLabel) merchantLabel.textContent = COD_NUMBER;
+      if (txnContainer) txnContainer.classList.remove('hidden');
+      if (paymentNote) paymentNote.textContent = `Please send ONLY the delivery charge ৳${deliveryFee.toFixed(2)} to ${COD_NUMBER} via bKash Send Money to confirm. Subtotal collected on delivery.`;
     }
   }
 
@@ -1019,7 +1004,7 @@ Subtotal collected on delivery.`;
   updateCheckoutTotals();
 
   const btn = document.getElementById('final-checkout-btn');
-  if(btn) {
+  if (btn) {
     btn.addEventListener('click', async () => {
       const name = document.getElementById('co-name')?.value.trim();
       const phone = document.getElementById('co-phone')?.value.trim();
@@ -1032,12 +1017,10 @@ Subtotal collected on delivery.`;
         alert("Please complete all Operative Details and select a Settlement Protocol.");
         return;
       }
-      
       if ((paymentMethod === 'Bkash' || paymentMethod === 'Cash on Delivery') && !txnId) {
         alert("Transaction ID is required to verify your payment/delivery charge.");
         return;
       }
-      
       if (!policyAccepted) {
         alert("You must accept the Shipping & Return policies to deploy.");
         return;
@@ -1049,7 +1032,7 @@ Subtotal collected on delivery.`;
       const deliveryFee = calculateDeliveryFee(address);
       const total = subtotal + deliveryFee;
       let paid = 0, due = 0;
-      
+
       if (hasPreOrder) {
         paid = Math.round((subtotal * 0.25) / 5) * 5;
         due = total - paid;
@@ -1061,41 +1044,33 @@ Subtotal collected on delivery.`;
         due = subtotal;
       }
 
-      try {
-        const orderData = {
-          timeISO: new Date().toISOString(),
-          items: checkoutItems.map(i => ({
-              productId: i.id,
-              productName: i.name,
-              color: i.color,
-              quantity: i.qty,
-              unitPrice: i.price,
-              wasPreOrder: i.isPreOrder
-          })),
-          deliveryFee, total, paid, due,
-          customerName: name, phone, address,
-          paymentMethod,
-          paymentNumber: document.getElementById('co-merchant-number')?.textContent || BKASH_NUMBER,
-          transactionId: txnId.toUpperCase(),
-          status: 'Pending Verification'
-        };
-        
-        let generatedOrderId = '';
+      const orderData = {
+        timeISO: new Date().toISOString(),
+        customerName: name,
+        phone: phone,
+        address: address,
+        paymentMethod: paymentMethod,
+        transactionId: txnId,
+        items: checkoutItems.map(i => ({ productId: i.id, productName: i.name, color: i.color, quantity: i.qty, unitPrice: i.price })),
+        subtotal: subtotal,
+        deliveryFee: deliveryFee,
+        total: total,
+        paidAmount: paid,
+        dueAmount: due,
+        status: 'Pending Verification'
+      };
 
+      try {
         await runTransaction(db, async (transaction) => {
           const productRefs = checkoutItems.map(item => doc(db, 'products', item.id));
           const productSnaps = await Promise.all(productRefs.map(ref => transaction.get(ref)));
 
           for (let i = 0; i < checkoutItems.length; i++) {
             const snap = productSnaps[i];
-            if (!snap.exists()) throw new Error(`Inventory mismatch: Product ${checkoutItems[i].name} does not exist in backend.`);
-
+            if (!snap.exists()) throw new Error(`Product ${checkoutItems[i].name} does not exist.`);
             const data = snap.data();
-            const currentStock = Number(data.stock);
-            const item = checkoutItems[i];
-
-            if (currentStock !== -1 && data.availability !== 'Pre Order' && currentStock < item.qty) {
-               throw new Error(`Insufficient stock for ${item.name}. Only ${currentStock} left available.`);
+            if (data.availability !== 'Pre Order' && Number(data.stock) < checkoutItems[i].qty) {
+              throw new Error(`Insufficient stock for ${checkoutItems[i].name}. Only ${data.stock} units left.`);
             }
           }
 
@@ -1107,32 +1082,29 @@ Subtotal collected on delivery.`;
             const data = snap.data();
             const currentStock = Number(data.stock);
             const item = checkoutItems[i];
-            
             if (currentStock !== -1 && data.availability !== 'Pre Order') {
               const newStock = currentStock - item.qty;
-              transaction.update(productRefs[i], { stock: newStock }); 
-              liveUpdates[item.id] = newStock;                         
+              transaction.update(productRefs[i], { stock: newStock });
+              liveUpdates[item.id] = newStock;
             }
           }
 
           const newOrderRef = doc(collection(db, 'orders'));
           transaction.set(newOrderRef, orderData);
-          generatedOrderId = newOrderRef.id;
+          var generatedOrderId = newOrderRef.id;
 
           if (Object.keys(liveUpdates).length > 0) {
             transaction.set(liveInventoryRef, liveUpdates, { merge: true });
           }
+          
+          localStorage.removeItem('store_products_data');
+          localStorage.removeItem('store_products_expiry');
+          if (!singleProductId) {
+            localStorage.removeItem('cart');
+            updateCartUI();
+          }
+          showOrderConfirmation(generatedOrderId);
         });
-        
-        localStorage.removeItem('store_products_data');
-        localStorage.removeItem('store_products_expiry');
-
-        if (!singleProductId) {
-          localStorage.removeItem('cart');
-          updateCartUI();
-        }
-        
-        showOrderConfirmation(generatedOrderId);
       } catch (err) {
         console.error(err);
         alert("Transaction Aborted: " + err.message);
@@ -1143,75 +1115,36 @@ Subtotal collected on delivery.`;
   }
 }
 
-function showOrderConfirmation(orderId) {
-  const modal = document.createElement('div');
-  modal.className = "fixed inset-0 z-[200] flex items-center justify-center p-6 bg-slate-950/90 backdrop-blur-md opacity-0 transition-opacity duration-500";
-  modal.innerHTML = `
-    <div class="bg-surface-container-high w-full max-w-sm rounded-2xl overflow-hidden border border-primary/20 shadow-2xl transform scale-95 transition-transform duration-500 text-center flex flex-col items-center p-10">
-      <div class="w-20 h-20 bg-primary/10 rounded-full flex items-center justify-center mb-6">
-        <span class="material-symbols-outlined text-5xl text-primary">verified</span>
-      </div>
-      <h2 class="font-headline text-3xl font-bold tracking-tighter text-on-surface mb-2">Transmission<br>Successful</h2>
-      <p class="text-outline text-sm mb-6 leading-relaxed">Dispatch manifest <span class="text-primary font-mono font-bold">#${orderId.slice(-6).toUpperCase()}</span> has been uploaded to the lattice.</p>
-      <button onclick="window.location.href='index.html'" class="w-full bg-primary text-white font-headline font-bold py-4 rounded-xl tracking-widest uppercase shadow-lg shadow-purple-500/20 active:scale-[0.98] transition-all">
-        Return to Base
-      </button>
-    </div>
-  `;
-  document.body.appendChild(modal);
-  setTimeout(() => {
-    modal.classList.remove('opacity-0');
-    modal.querySelector('div')?.classList.remove('scale-95');
-  }, 50);
-}
-
-// ====== ADMIN SYSTEM ======
-const statusExplanations = {
-  "Pending Verification": "Order received. Awaiting TrxID/Payment verification by admin.",
-  "Processing": "Payment verified. Lab is packing the order.",
-  "Dispatched": "Order handed over to the delivery courier.",
-  "Delivered": "Customer has received the item.",
-  "Cancelled": "Order voided (Invalid payment, fake info, etc.)"
-};
-
-const statusColors = {
-  "Pending Verification": "bg-yellow-900/30 text-yellow-400 border-yellow-900/50",
-  "Processing": "bg-blue-900/30 text-blue-400 border-blue-900/50",
-  "Dispatched": "bg-purple-900/30 text-purple-400 border-purple-900/50",
-  "Delivered": "bg-green-900/30 text-green-400 border-green-900/50",
-  "Cancelled": "bg-red-900/30 text-red-400 border-red-900/50"
-};
-
-async function initAdminPanel() {
-  const loginSection = document.getElementById('login-section');
-  const dashboardSection = document.getElementById('dashboard-section');
+async function initAdminPage() {
+  const loginForm = document.getElementById('login-form');
+  const adminContent = document.getElementById('admin-content');
   const logoutBtn = document.getElementById('logout-btn');
-  
-  onAuthStateChanged(auth, user => {
+
+  onAuthStateChanged(auth, async (user) => {
     if (user) {
-      if(loginSection) loginSection.classList.add('hidden');
-      if(dashboardSection) dashboardSection.classList.remove('hidden');
-      if(logoutBtn) logoutBtn.classList.remove('hidden'); 
-      if (document.getElementById('inventory-tab')) setupInventoryAdmin();
-      if (document.getElementById('orders-tab')) setupOrdersAdmin();
+      if (loginForm) loginForm.classList.add('hidden');
+      if (adminContent) adminContent.classList.remove('hidden');
+      await setupInventoryAdmin();
+      await setupOrdersAdmin();
     } else {
-      if(loginSection) loginSection.classList.remove('hidden');
-      if(dashboardSection) dashboardSection.classList.add('hidden');
-      if(logoutBtn) logoutBtn.classList.add('hidden'); 
+      if (loginForm) loginForm.classList.remove('hidden');
+      if (adminContent) adminContent.classList.add('hidden');
     }
   });
 
-  const loginForm = document.getElementById('login-form');
   if (loginForm) {
     loginForm.addEventListener('submit', async (e) => {
       e.preventDefault();
       const email = document.getElementById('email').value;
       const pwd = document.getElementById('password').value;
-      try { await signInWithEmailAndPassword(auth, email, pwd); } catch (err) { alert(err.message); }
+      try {
+        await signInWithEmailAndPassword(auth, email, pwd);
+      } catch (err) {
+        alert(err.message);
+      }
     });
   }
-
-  if(logoutBtn) logoutBtn.addEventListener('click', () => signOut(auth));
+  if (logoutBtn) logoutBtn.addEventListener('click', () => signOut(auth));
 }
 
 async function setupInventoryAdmin() {
@@ -1226,10 +1159,8 @@ async function setupInventoryAdmin() {
     document.getElementById('tab-add')?.classList.remove('bg-transparent', 'text-outline');
     document.getElementById('tab-manage')?.classList.remove('bg-surface-container-low', 'text-primary');
     document.getElementById('tab-manage')?.classList.add('bg-transparent', 'text-outline');
-    
     document.getElementById('view-add')?.classList.remove('hidden');
     document.getElementById('view-manage')?.classList.add('hidden');
-    
     if (isResetting && form) {
       editingId = null;
       form.reset();
@@ -1239,7 +1170,6 @@ async function setupInventoryAdmin() {
   }
 
   document.getElementById('tab-add')?.addEventListener('click', () => { switchToAddTab(true); });
-  
   document.getElementById('tab-manage')?.addEventListener('click', async () => {
     document.getElementById('tab-manage')?.classList.add('bg-surface-container-low', 'text-primary');
     document.getElementById('tab-manage')?.classList.remove('bg-transparent', 'text-outline');
@@ -1273,51 +1203,44 @@ async function setupInventoryAdmin() {
   function renderAdminProductsList() {
     if (!listContainer) return;
     listContainer.innerHTML = '';
-    
     products.forEach(p => {
       const div = document.createElement('div');
-      div.className = 'bg-surface-container-low p-4 rounded-xl border border-white/5 flex flex-col md:flex-row gap-4 items-center justify-between hover:border-primary/30 transition-colors';
+      div.className = 'bg-surface-container-low p-4 rounded-xl border border-white/5 flex justify-between items-center gap-4';
       div.innerHTML = `
-        <div class="flex items-center gap-4 w-full md:w-auto">
-          <img src="${p.images?.[0] || 'logo.png'}" class="w-16 h-16 rounded-lg object-cover bg-surface-variant">
-          <div>
-            <h4 class="font-bold text-on-surface truncate">${p.name}</h4>
-            <div class="text-xs text-outline font-mono">Stock: ${p.stock} | ৳${p.price}</div>
-          </div>
+        <div>
+          <h4 class="font-bold">${p.name}</h4>
+          <p class="text-xs text-outline">Category: ${p.category || '-'} | Price: ৳${p.price} | Stock: ${p.stock}</p>
         </div>
-        <div class="flex gap-2 w-full md:w-auto justify-end">
-          <button class="edit-btn px-4 py-2 bg-surface-variant hover:bg-surface-bright text-slate-200 text-xs rounded-lg font-bold uppercase transition-colors">Edit</button>
-          <button class="del-btn px-4 py-2 bg-red-900/30 hover:bg-red-900/50 text-red-400 text-xs rounded-lg font-bold uppercase transition-colors">Delete</button>
+        <div class="flex gap-2">
+          <button class="edit-btn text-xs bg-primary/10 text-primary px-3 py-1.5 rounded-lg font-bold hover:bg-primary/20 transition-colors">Edit</button>
+          <button class="del-btn text-xs bg-red-500/10 text-red-400 px-3 py-1.5 rounded-lg font-bold hover:bg-red-500/20 transition-colors">Delete</button>
         </div>
       `;
-      
       div.querySelector('.edit-btn').onclick = () => {
-        switchToAddTab(false);
         editingId = p.id;
+        switchToAddTab(false);
         document.getElementById('p-name').value = p.name || '';
         document.getElementById('p-category').value = p.category || '';
-        document.getElementById('p-price').value = p.price || '';
-        document.getElementById('p-discount').value = p.discount || '0';
-        document.getElementById('p-stock').value = p.stock || '';
+        document.getElementById('p-price').value = p.price || 0;
+        document.getElementById('p-discount').value = p.discount || 0;
+        document.getElementById('p-stock').value = p.stock || 0;
         document.getElementById('p-color').value = p.color || '';
         document.getElementById('p-availability').value = p.availability || 'In Stock';
-        document.getElementById('p-hot').checked = p.hotDeal || false;
+        document.getElementById('p-hot').checked = !!p.hotDeal;
         document.getElementById('p-desc').value = p.description || '';
         document.getElementById('p-meta-desc').value = p.metaDescription || '';
         document.getElementById('p-detailed-desc').value = p.detailedDescription || '';
-        document.getElementById('p-images').value = p.images ? p.images.join('\n') : '';
-
+        document.getElementById('p-images').value = (p.images || []).join('\n');
         if (typeof p.specs === 'object') {
-          document.getElementById('p-specs').value = Object.entries(p.specs).map(([k,v]) => `${k}: ${v}`).join('\n');
+          document.getElementById('p-specs').value = Object.entries(p.specs).map(([k,v])=>`${k}: ${v}`).join('\n');
         } else {
           document.getElementById('p-specs').value = p.specs || '';
         }
         document.getElementById('form-title').textContent = 'Edit Product';
         document.getElementById('submit-btn').innerHTML = '<span class="material-symbols-outlined">save</span> Save Changes';
       };
-      
       div.querySelector('.del-btn').onclick = async () => {
-        if(confirm(`Delete ${p.name}? This will remove it instantly.`)) {
+        if (confirm(`Delete ${p.name}? This will remove it instantly.`)) {
           await deleteDoc(doc(db, 'products', p.id));
           await syncSingleProductToMatrix({ id: p.id }, true);
           products = await loadProducts(true);
@@ -1331,7 +1254,7 @@ async function setupInventoryAdmin() {
   if (form) {
     form.onsubmit = async (e) => {
       e.preventDefault();
-      const imagesRaw = document.getElementById('p-images').value.split('\n').map(s=>s.trim()).filter(Boolean);
+      const imagesRaw = document.getElementById('p-images').value.split('\n').map(s => s.trim()).filter(Boolean);
       const data = {
         name: document.getElementById('p-name').value,
         category: document.getElementById('p-category').value,
@@ -1347,31 +1270,27 @@ async function setupInventoryAdmin() {
         images: imagesRaw,
         specs: document.getElementById('p-specs').value
       };
-      
       try {
-        if (editingId) { 
-          await updateDoc(doc(db, 'products', editingId), data); 
+        if (editingId) {
+          await updateDoc(doc(db, 'products', editingId), data);
           data.id = editingId;
           await syncSingleProductToMatrix(data, false);
-          
           const inventoryRef = doc(db, 'store_data', 'live_inventory');
           await updateDoc(inventoryRef, { [data.id]: data.stock });
-          
-          alert('Product successfully updated and deployed!'); 
-        } 
-        else { 
-          const docRef = await addDoc(collection(db, 'products'), data); 
+          alert('Product successfully updated and deployed!');
+        } else {
+          const docRef = await addDoc(collection(db, 'products'), data);
           data.id = docRef.id;
           await syncSingleProductToMatrix(data, false);
-          
           const inventoryRef = doc(db, 'store_data', 'live_inventory');
           await updateDoc(inventoryRef, { [data.id]: data.stock });
-          
-          alert('New product successfully added and deployed!'); 
+          alert('New product successfully added and deployed!');
         }
         products = await loadProducts(true);
-        switchToAddTab(true); 
-      } catch(err) { alert(err.message); }
+        switchToAddTab(true);
+      } catch (err) {
+        alert(err.message);
+      }
     };
   }
 }
@@ -1382,132 +1301,122 @@ async function setupOrdersAdmin() {
   const tabOrderHistory = document.getElementById('tab-order-history');
   if (!listContainer) return;
 
-  let currentPipelineView = 'active'; 
+  let currentPipelineView = 'active';
   const activeStatuses = ['Pending Verification', 'Processing', 'Dispatched'];
   const historyStatuses = ['Delivered', 'Cancelled'];
-  
-  async function loadAndRenderOrders(pipelineType) {
-    listContainer.innerHTML = '<div class="p-8 text-center text-outline"><span class="material-symbols-outlined animate-spin">sync</span> Querying Matrix Pipeline...</div>';
+
+  async function loadAndRenderOrders(viewType) {
+    listContainer.innerHTML = `<div class="text-center py-8 text-outline animate-pulse">Loading lattice data...</div>`;
     try {
-      const targetStatuses = pipelineType === 'active' ? activeStatuses : historyStatuses;
-      
-      const q = query(
-        collection(db, 'orders'), 
-        where('status', 'in', targetStatuses),
-        orderBy('timeISO', 'desc'),
-        limit(50)
-      );
-      const snapshot = await getDocs(q);
-      
-      if (snapshot.empty) {
-        listContainer.innerHTML = `<div class="p-8 text-center text-outline">No targeted manifests found in ${pipelineType} logs.</div>`;
-        return;
-      }
-
+      const snap = await getDocs(query(collection(db, 'orders'), orderBy('timeISO', 'desc')));
       listContainer.innerHTML = '';
-      snapshot.forEach(documentSnapshot => {
-        const o = documentSnapshot.data();
-        const oId = documentSnapshot.id;
-        const dateString = o.timeISO ? new Date(o.timeISO).toLocaleString() : new Date().toLocaleString();
-        
-        const badgeClass = statusColors[o.status] || "bg-surface-variant text-slate-300";
+      let count = 0;
 
-        let itemsHtml = '';
-        (o.items || []).forEach(i => {
-          const qty = i.quantity || i.qty || 1;
-          const name = i.productName || i.name || 'Unknown Item';
-          const col = i.color ? `(${i.color})` : '';
-          itemsHtml += `<div class="text-sm"><span class="text-primary font-bold">x${qty}</span> ${name} ${col}</div>`;
-        });
+      snap.forEach(docSnap => {
+        const o = docSnap.data();
+        const oId = docSnap.id;
+        const status = o.status || 'Pending Verification';
+        const isMatch = viewType === 'active' ? activeStatuses.includes(status) : historyStatuses.includes(status);
 
-        const div = document.createElement('div');
-        div.className = "bg-surface-container p-6 rounded-2xl border border-white/5 space-y-4 shadow-xl transition-all duration-300";
-        div.innerHTML = `
-          <div class="flex flex-col md:flex-row justify-between md:items-center gap-4 border-b border-white/5 pb-4">
-            <div>
-              <div class="font-mono text-xs text-outline mb-1">ID: ${oId} | ${dateString}</div>
-              <h3 class="font-bold text-lg">${o.customerName}</h3>
-              <div class="text-sm text-outline flex items-center gap-3 mt-1">
-                <a href="tel:${o.phone}" class="hover:text-primary transition-colors flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">call</span> ${o.phone}</a>
+        if (isMatch) {
+          count++;
+          const dateString = o.timeISO ? new Date(o.timeISO).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' }) : 'Unknown Time';
+          let itemsHTML = (o.items || []).map(i => `
+            <div class="flex justify-between items-center text-sm border-b border-white/5 py-1 last:border-0">
+              <span class="text-slate-200 font-medium">${i.productName} ${i.color ? `(${i.color})` : ''} <span class="text-outline text-xs">× ${i.quantity}</span></span>
+              <span class="font-mono text-xs font-bold text-slate-400">৳${(i.unitPrice * i.quantity).toFixed(2)}</span>
+            </div>
+          `).join('');
+
+          let badgeClass = "border-amber-500/30 text-amber-400 bg-amber-500/5";
+          if (status === 'Processing') badgeClass = "border-blue-500/30 text-blue-400 bg-gradient-to-r from-blue-500/10";
+          if (status === 'Dispatched') badgeClass = "border-purple-500/30 text-purple-400 bg-purple-500/5";
+          if (status === 'Delivered') badgeClass = "border-emerald-500/30 text-emerald-400 bg-emerald-500/5";
+          if (status === 'Cancelled') badgeClass = "border-red-500/30 text-red-400 bg-red-500/5";
+
+          const div = document.createElement('div');
+          div.className = "bg-surface-container-low p-6 rounded-2xl border border-white/5 space-y-4 shadow-xl transition-all duration-300";
+          div.innerHTML = `
+            <div class="flex flex-col md:flex-row justify-between md:items-center gap-4 border-b border-white/5 pb-4">
+              <div>
+                <div class="font-mono text-xs text-outline mb-1">ID: ${oId} | ${dateString}</div>
+                <h3 class="font-bold text-lg">${o.customerName}</h3>
+                <div class="text-sm text-outline flex items-center gap-3 mt-1">
+                  <a href="tel:${o.phone}" class="hover:text-primary transition-colors flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">call</span> ${o.phone}</a>
+                </div>
+              </div>
+              <div class="flex flex-col items-end gap-2">
+                <span class="status-badge px-4 py-1 rounded-full text-xs font-bold border uppercase tracking-widest ${badgeClass}">${status}</span>
+                <select class="status-select bg-surface-container-low border border-white/10 rounded-lg text-xs px-2 py-1 focus:ring-0 focus:border-primary/50 text-slate-300">
+                  <option value="Pending Verification" ${status==='Pending Verification'?'selected':''}>Pending Verification</option>
+                  <option value="Processing" ${status==='Processing'?'selected':''}>Processing</option>
+                  <option value="Dispatched" ${status==='Dispatched'?'selected':''}>Dispatched</option>
+                  <option value="Delivered" ${status==='Delivered'?'selected':''}>Delivered</option>
+                  <option value="Cancelled" ${status==='Cancelled'?'selected':''}>Cancelled</option>
+                </select>
               </div>
             </div>
-            <div class="flex flex-col items-end gap-2">
-              <span class="status-badge px-4 py-1 rounded-full text-xs font-bold border uppercase tracking-widest ${badgeClass}">${o.status || 'Pending'}</span>
-              <select class="status-select bg-surface-container-low border border-white/10 rounded-lg text-xs px-2 py-1 focus:ring-0 focus:border-primary/50 text-slate-300">
-                <option value="Pending Verification" ${o.status==='Pending Verification'?'selected':''}>Pending Verification</option>
-                <option value="Processing" ${o.status==='Processing'?'selected':''}>Processing</option>
-                <option value="Dispatched" ${o.status==='Dispatched'?'selected':''}>Dispatched</option>
-                <option value="Delivered" ${o.status==='Delivered'?'selected':''}>Delivered</option>
-                <option value="Cancelled" ${o.status==='Cancelled'?'selected':''}>Cancelled</option>
-              </select>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <h4 class="text-xs uppercase tracking-widest text-outline mb-2">Delivery Drop</h4>
+                <p class="text-sm text-slate-300 leading-relaxed font-medium">${o.address}</p>
+                <div class="mt-3 bg-surface-container-lowest/50 p-3 rounded-xl border border-white/5 text-xs space-y-1">
+                  <div><span class="text-outline">Settlement:</span> <span class="font-bold text-slate-300">${o.paymentMethod}</span></div>
+                  <div><span class="text-outline">TXN Identifier:</span> <span class="font-mono font-bold text-primary">${o.transactionId || '-'}</span></div>
+                </div>
+              </div>
+              <div>
+                <h4 class="text-xs uppercase tracking-widest text-outline mb-2">Manifest Breakdown</h4>
+                <div class="bg-surface-container-lowest/50 p-4 rounded-xl border border-white/5 space-y-2">
+                  <div class="max-h-32 overflow-y-auto pr-1 custom-scrollbar space-y-1">${itemsHTML}</div>
+                  <div class="border-t border-white/5 pt-2 flex justify-between text-xs font-semibold text-outline">
+                    <span>Subtotal / Delivery Charge</span>
+                    <span class="font-mono">৳${o.subtotal.toFixed(2)} / ৳${o.deliveryFee}</span>
+                  </div>
+                  <div class="flex justify-between text-sm font-black text-on-surface">
+                    <span>Aggregate Total</span>
+                    <span class="font-mono text-primary">৳${o.total.toFixed(2)}</span>
+                  </div>
+                  <div class="flex justify-between text-xs font-bold text-outline">
+                    <span>Paid / Outstanding</span>
+                    <span class="font-mono ${o.dueAmount > 0 ? 'text-amber-400' : 'text-emerald-400'}">৳${o.paidAmount} / ৳${o.dueAmount}</span>
+                  </div>
+                </div>
+              </div>
             </div>
-          </div>
-          
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-              <h4 class="text-xs uppercase tracking-widest text-outline mb-2">Delivery Drop</h4>
-              <p class="text-sm text-slate-200 leading-relaxed">${o.address}</p>
-            </div>
-            <div>
-              <h4 class="text-xs uppercase tracking-widest text-outline mb-2">Payment Details (${o.paymentMethod?.toUpperCase() || 'N/A'})</h4>
-              <p class="text-sm font-mono text-primary bg-primary/10 px-3 py-1.5 rounded-lg border border-primary/20 w-fit">TrxID: ${o.transactionId || o.trxID || 'N/A'}</p>
-            </div>
-          </div>
+          `;
 
-          <div class="border-t border-white/5 pt-4">
-            <h4 class="text-xs uppercase tracking-widest text-outline mb-3">Manifest Content</h4>
-            <div class="space-y-2 mb-4 bg-surface-container-low p-4 rounded-xl border border-white/5">${itemsHtml}</div>
-            <div class="flex justify-end gap-6 text-sm">
-              <div class="text-outline text-right">Subtotal:<br>Delivery:<br>Paid:<br>Due:<br><strong class="text-on-surface text-lg mt-1 block">Total:</strong></div>
-              <div class="font-mono text-right">৳${o.subtotal || (o.total - o.deliveryFee)}<br>৳${o.deliveryFee}<br>৳${o.paid || 0}<br>৳${o.due || 0}<br><strong class="text-primary text-lg mt-1 block">৳${o.total}</strong></div>
-            </div>
-          </div>
-        `;
-        
-        div.querySelector('.status-select').addEventListener('change', async (e) => {
-          const newStatus = e.target.value;
-          const selectElement = e.target;
-          selectElement.disabled = true;
-          
-          try {
-            await updateDoc(doc(db, 'orders', oId), { status: newStatus });
-            
-            const isTargetActive = activeStatuses.includes(newStatus);
-            const checkingCurrentActive = currentPipelineView === 'active';
-            
-            if (isTargetActive !== checkingCurrentActive) {
-              div.classList.add('opacity-0', 'scale-95');
-              setTimeout(() => { div.remove(); }, 300);
-            } else {
-              const localBadge = div.querySelector('.status-badge');
-              if (localBadge) {
-                localBadge.className = `status-badge px-4 py-1 rounded-full text-xs font-bold border uppercase tracking-widest ${statusColors[newStatus]}`;
-                localBadge.textContent = newStatus;
-              }
+          div.querySelector('.status-select').addEventListener('change', async (e) => {
+            const newStatus = e.target.value;
+            try {
+              await updateDoc(doc(db, 'orders', oId), { status: newStatus });
+              loadAndRenderOrders(viewType);
+            } catch (err) {
+              alert('Status upgrade fault: ' + err.message);
             }
-          } catch(err) { 
-            alert("Failed to modify pipeline tracking parameters: " + err.message); 
-            selectElement.value = o.status;
-          } finally {
-            selectElement.disabled = false;
-          }
-        });
-        
-        listContainer.appendChild(div);
+          });
+
+          listContainer.appendChild(div);
+        }
       });
-    } catch(err) {
-      listContainer.innerHTML = `<div class="p-8 text-center text-red-400">Error rendering logs. Confirm configuration rules match expected indexing criteria. ${err.message}</div>`;
+
+      if (count === 0) {
+        listContainer.innerHTML = `<div class="text-center py-12 text-outline bg-surface-container-low rounded-xl border border-white/5 text-sm">No transmissions log found under this vector.</div>`;
+      }
+    } catch (err) {
+      listContainer.innerHTML = `<div class="text-center py-12 text-red-400 bg-red-950/10 rounded-xl border border-red-900/20 text-sm">Lattice read catastrophic failure: ${err.message}</div>`;
     }
   }
 
-  if (tabActiveOrders && tabOrderHistory) {
+  if (tabActiveOrders) {
     tabActiveOrders.addEventListener('click', () => {
       currentPipelineView = 'active';
       tabActiveOrders.className = "font-display font-bold tracking-wider text-sm text-primary border-b-2 border-primary pb-2 px-2 transition-all uppercase";
       tabOrderHistory.className = "font-display font-bold tracking-wider text-sm text-outline hover:text-slate-200 border-b-2 border-transparent pb-2 px-2 transition-all uppercase";
       loadAndRenderOrders('active');
     });
-
+  }
+  if (tabOrderHistory) {
     tabOrderHistory.addEventListener('click', () => {
       currentPipelineView = 'history';
       tabOrderHistory.className = "font-display font-bold tracking-wider text-sm text-primary border-b-2 border-primary pb-2 px-2 transition-all uppercase";
@@ -1522,25 +1431,20 @@ async function setupOrdersAdmin() {
 // ====== GLOBAL INITIALIZATION ROUTER ======
 document.addEventListener('DOMContentLoaded', () => {
   loadProducts();
+  try { updateCartUI(); } catch (err) { console.error("UI Update Sync Fault", err); }
 
-  try {
-    updateCartUI();
-  } catch (err) {
-    console.warn("Cart update bypassed:", err);
-  }
-
-  document.getElementById('cart-link')?.addEventListener('click', () => {
+  document.getElementById('cart-icon')?.addEventListener('click', () => {
     const slider = document.getElementById('cart-slider');
     if (slider) {
       slider.classList.remove('hidden');
       slider.classList.remove('translate-x-full');
     }
   });
-  
+
   document.getElementById('close-cart')?.addEventListener('click', () => {
     document.getElementById('cart-slider')?.classList.add('translate-x-full');
   });
-  
+
   document.getElementById('checkout-cart')?.addEventListener('click', () => {
     const cart = getCart();
     if (cart.length === 0) { alert('Your cart is empty!'); return; }
@@ -1561,5 +1465,5 @@ document.addEventListener('DOMContentLoaded', () => {
   if (isProducts) { initProductsPage().catch(e => console.error("Products Error", e)); }
   if (isProduct) { initProductPage().catch(e => console.error("Product View Error", e)); }
   if (isCheckoutPage) { initCheckoutPage().catch(e => console.error("Checkout Error", e)); }
-  if (isAdminPage) { initAdminPanel().catch(e => console.error("Admin Panel Error", e)); }
+  if (isAdminPage) { initAdminPage().catch(e => console.error("Admin Error", e)); }
 });
