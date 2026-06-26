@@ -1,6 +1,6 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js';
 import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/9.23.0/firebase-auth.js';
-import { getFirestore, collection, getDocs, addDoc, doc, updateDoc, deleteDoc, getDoc, setDoc, orderBy, query, where, runTransaction } from 'https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js';
+import { getFirestore, collection, getDocs, addDoc, doc, updateDoc, deleteDoc, getDoc, setDoc, orderBy, query, where, runTransaction, limit } from 'https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js';
 import { firebaseConfig, BKASH_NUMBER, COD_NUMBER, DELIVERY_FEE } from './config.js';
 
 // ====== INITIALIZE FIREBASE ======
@@ -62,19 +62,19 @@ async function syncMasterCatalog() {
     const snapshot = await getDocs(collection(db, 'products'));
     const productsList = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
     
-    // --- NEW: Generate the Flat Live Inventory Map ---
+    // --- Generate the Flat Live Inventory Map ---
     const liveInventoryMap = {};
     productsList.forEach(p => { liveInventoryMap[p.id] = p.stock; });
     await setDoc(doc(db, 'store_data', 'live_inventory'), liveInventoryMap);
-    // -------------------------------------------------
 
     await rebuildCatalogShards(productsList);
   } catch (err) {
     console.error("Critical: Failed to compile master catalog matrix:", err);
+    throw err;
   }
 }
 
-// --- NEW: Advanced Multi-Source Loader ---
+// --- Advanced Multi-Source Loader ---
 async function loadProducts(forceRefresh = false) {
   const now = Date.now();
 
@@ -93,7 +93,6 @@ async function loadProducts(forceRefresh = false) {
     const localCache = localStorage.getItem(CACHE_KEY);
     const cacheExpiry = localStorage.getItem(CACHE_EXPIRY_KEY);
 
-    // 1. Fetch BASE Catalogue (from Cache or Shards)
     if (localCache && cacheExpiry && now < Number(cacheExpiry)) {
       try { products = JSON.parse(localCache); } 
       catch (err) { console.error('Cache parsing failed:', err); }
@@ -128,7 +127,7 @@ async function loadProducts(forceRefresh = false) {
       }
     }
 
-    // 2. --- NEW: Merge Flat Live Inventory into memory ---
+    // Merge Flat Live Inventory into memory
     try {
       const liveSnap = await getDoc(doc(db, 'store_data', 'live_inventory'));
       if (liveSnap.exists()) {
@@ -146,7 +145,6 @@ async function loadProducts(forceRefresh = false) {
     } catch (e) {
       console.warn("Live inventory check bypassed:", e);
     }
-    // ----------------------------------------------------
 
     cachedProducts = products;
     productsMap.clear();
@@ -963,7 +961,6 @@ Subtotal collected on delivery.`;
         
         let generatedOrderId = '';
 
-        // --- NEW: THE SECURE CHECKOUT TRANSACTION ---
         await runTransaction(db, async (transaction) => {
           const productRefs = checkoutItems.map(item => doc(db, 'products', item.id));
           const productSnaps = await Promise.all(productRefs.map(ref => transaction.get(ref)));
@@ -984,7 +981,6 @@ Subtotal collected on delivery.`;
           const liveInventoryRef = doc(db, 'store_data', 'live_inventory');
           const liveUpdates = {};
 
-          // Safely deduct stock for standard items
           for (let i = 0; i < checkoutItems.length; i++) {
             const snap = productSnaps[i];
             const data = snap.data();
@@ -993,8 +989,8 @@ Subtotal collected on delivery.`;
             
             if (currentStock !== -1 && data.availability !== 'Pre Order') {
               const newStock = currentStock - item.qty;
-              transaction.update(productRefs[i], { stock: newStock }); // Update secure admin file
-              liveUpdates[item.id] = newStock;                         // Prep public map update
+              transaction.update(productRefs[i], { stock: newStock }); 
+              liveUpdates[item.id] = newStock;                         
             }
           }
 
@@ -1002,16 +998,13 @@ Subtotal collected on delivery.`;
           transaction.set(newOrderRef, orderData);
           generatedOrderId = newOrderRef.id;
 
-          // Push new stock numbers to the live map instantly
           if (Object.keys(liveUpdates).length > 0) {
             transaction.set(liveInventoryRef, liveUpdates, { merge: true });
           }
         });
         
-        // Wipe local storage so their browser fetches the new stock numbers on next page load
         localStorage.removeItem('store_products_data');
         localStorage.removeItem('store_products_expiry');
-        // ------------------------------------------
 
         if (!singleProductId) {
           localStorage.removeItem('cart');
@@ -1103,14 +1096,15 @@ async function initAdminPanel() {
 async function setupInventoryAdmin() {
   const form = document.getElementById('product-form');
   const listContainer = document.getElementById('admin-products-list');
+  const syncBtn = document.getElementById('sync-catalog-btn');
   let editingId = null;
   let products = await loadProducts();
 
   function switchToAddTab(isResetting = true) {
-    document.getElementById('tab-add')?.classList.add('border-primary', 'text-primary');
-    document.getElementById('tab-add')?.classList.remove('border-transparent', 'text-slate-400');
-    document.getElementById('tab-manage')?.classList.remove('border-primary', 'text-primary');
-    document.getElementById('tab-manage')?.classList.add('border-transparent', 'text-slate-400');
+    document.getElementById('tab-add')?.classList.add('bg-surface-container', 'text-primary');
+    document.getElementById('tab-add')?.classList.remove('bg-transparent', 'text-outline');
+    document.getElementById('tab-manage')?.classList.remove('bg-surface-container', 'text-primary');
+    document.getElementById('tab-manage')?.classList.add('bg-transparent', 'text-outline');
     
     document.getElementById('view-add')?.classList.remove('hidden');
     document.getElementById('view-manage')?.classList.add('hidden');
@@ -1126,15 +1120,32 @@ async function setupInventoryAdmin() {
   document.getElementById('tab-add')?.addEventListener('click', () => { switchToAddTab(true); });
   
   document.getElementById('tab-manage')?.addEventListener('click', async () => {
-    document.getElementById('tab-manage')?.classList.add('border-primary', 'text-primary');
-    document.getElementById('tab-manage')?.classList.remove('border-transparent', 'text-slate-400');
-    document.getElementById('tab-add')?.classList.remove('border-primary', 'text-primary');
-    document.getElementById('tab-add')?.classList.add('border-transparent', 'text-slate-400');
+    document.getElementById('tab-manage')?.classList.add('bg-surface-container', 'text-primary');
+    document.getElementById('tab-manage')?.classList.remove('bg-transparent', 'text-outline');
+    document.getElementById('tab-add')?.classList.remove('bg-surface-container', 'text-primary');
+    document.getElementById('tab-add')?.classList.add('bg-transparent', 'text-outline');
     document.getElementById('view-manage')?.classList.remove('hidden');
     document.getElementById('view-add')?.classList.add('hidden');
-    products = await loadProducts();
+    products = await loadProducts(true);
     renderAdminProductsList();
   });
+
+  if (syncBtn) {
+    syncBtn.addEventListener('click', async () => {
+      syncBtn.disabled = true;
+      const originalHTML = syncBtn.innerHTML;
+      syncBtn.innerHTML = `<span class="material-symbols-outlined animate-spin text-sm">sync</span> Syncing Live Matrix...`;
+      try {
+        await syncMasterCatalog();
+        alert('Master parameters successfully built into production catalog shards.');
+      } catch (err) {
+        alert('Failed production build matrix sync: ' + err.message);
+      } finally {
+        syncBtn.innerHTML = originalHTML;
+        syncBtn.disabled = false;
+      }
+    });
+  }
 
   function renderAdminProductsList() {
     if (!listContainer) return;
@@ -1183,9 +1194,8 @@ async function setupInventoryAdmin() {
       };
       
       div.querySelector('.del-btn').onclick = async () => {
-        if(confirm(`Delete ${p.name}?`)) {
+        if(confirm(`Delete ${p.name}? Note: Changes won't go live until you click 'Publish Changes'.`)) {
           await deleteDoc(doc(db, 'products', p.id));
-          await syncMasterCatalog();
           products = await loadProducts(true);
           renderAdminProductsList();
         }
@@ -1215,10 +1225,14 @@ async function setupInventoryAdmin() {
       };
       
       try {
-        if (editingId) { await updateDoc(doc(db, 'products', editingId), data); alert('Updated!'); } 
-        else { await addDoc(collection(db, 'products'), data); alert('Added!'); }
-        
-        await syncMasterCatalog();
+        if (editingId) { 
+          await updateDoc(doc(db, 'products', editingId), data); 
+          alert('Saved locally. Click "Publish Changes to Live Store" to upload across shards.'); 
+        } 
+        else { 
+          await addDoc(collection(db, 'products'), data); 
+          alert('Added locally. Click "Publish Changes to Live Store" to upload across shards.'); 
+        }
         products = await loadProducts(true);
         switchToAddTab(true); 
       } catch(err) { alert(err.message); }
@@ -1228,16 +1242,29 @@ async function setupInventoryAdmin() {
 
 async function setupOrdersAdmin() {
   const listContainer = document.getElementById('orders-list');
+  const tabActiveOrders = document.getElementById('tab-active-orders');
+  const tabOrderHistory = document.getElementById('tab-order-history');
   if (!listContainer) return;
+
+  let currentPipelineView = 'active'; 
+  const activeStatuses = ['Pending Verification', 'Processing', 'Dispatched'];
+  const historyStatuses = ['Delivered', 'Cancelled'];
   
-  async function loadAndRenderOrders() {
-    listContainer.innerHTML = '<div class="p-8 text-center text-outline"><span class="material-symbols-outlined animate-spin">sync</span></div>';
+  async function loadAndRenderOrders(pipelineType) {
+    listContainer.innerHTML = '<div class="p-8 text-center text-outline"><span class="material-symbols-outlined animate-spin">sync</span> Querying Matrix Pipeline...</div>';
     try {
-      const q = query(collection(db, 'orders'), orderBy('timeISO', 'desc'));
+      const targetStatuses = pipelineType === 'active' ? activeStatuses : historyStatuses;
+      
+      const q = query(
+        collection(db, 'orders'), 
+        where('status', 'in', targetStatuses),
+        orderBy('timeISO', 'desc'),
+        limit(50)
+      );
       const snapshot = await getDocs(q);
       
       if (snapshot.empty) {
-        listContainer.innerHTML = '<div class="p-8 text-center text-outline">No active manifests found.</div>';
+        listContainer.innerHTML = `<div class="p-8 text-center text-outline">No targeted manifests found in ${pipelineType} logs.</div>`;
         return;
       }
 
@@ -1258,7 +1285,7 @@ async function setupOrdersAdmin() {
         });
 
         const div = document.createElement('div');
-        div.className = "bg-surface-container p-6 rounded-2xl border border-white/5 space-y-4 shadow-xl";
+        div.className = "bg-surface-container p-6 rounded-2xl border border-white/5 space-y-4 shadow-xl transition-all duration-300";
         div.innerHTML = `
           <div class="flex flex-col md:flex-row justify-between md:items-center gap-4 border-b border-white/5 pb-4">
             <div>
@@ -1269,7 +1296,7 @@ async function setupOrdersAdmin() {
               </div>
             </div>
             <div class="flex flex-col items-end gap-2">
-              <span class="px-4 py-1 rounded-full text-xs font-bold border uppercase tracking-widest ${badgeClass}">${o.status || 'Pending'}</span>
+              <span class="status-badge px-4 py-1 rounded-full text-xs font-bold border uppercase tracking-widest ${badgeClass}">${o.status || 'Pending'}</span>
               <select class="status-select bg-surface-container-low border border-white/10 rounded-lg text-xs px-2 py-1 focus:ring-0 focus:border-primary/50 text-slate-300">
                 <option value="Pending Verification" ${o.status==='Pending Verification'?'selected':''}>Pending Verification</option>
                 <option value="Processing" ${o.status==='Processing'?'selected':''}>Processing</option>
@@ -1303,20 +1330,57 @@ async function setupOrdersAdmin() {
         
         div.querySelector('.status-select').addEventListener('change', async (e) => {
           const newStatus = e.target.value;
+          const selectElement = e.target;
+          selectElement.disabled = true;
+          
           try {
             await updateDoc(doc(db, 'orders', oId), { status: newStatus });
-            loadAndRenderOrders();
-          } catch(err) { alert("Failed to update status: " + err.message); }
+            
+            const isTargetActive = activeStatuses.includes(newStatus);
+            const checkingCurrentActive = currentPipelineView === 'active';
+            
+            if (isTargetActive !== checkingCurrentActive) {
+              div.classList.add('opacity-0', 'scale-95');
+              setTimeout(() => { div.remove(); }, 300);
+            } else {
+              const localBadge = div.querySelector('.status-badge');
+              if (localBadge) {
+                localBadge.className = `status-badge px-4 py-1 rounded-full text-xs font-bold border uppercase tracking-widest ${statusColors[newStatus]}`;
+                localBadge.textContent = newStatus;
+              }
+            }
+          } catch(err) { 
+            alert("Failed to modify pipeline tracking parameters: " + err.message); 
+            selectElement.value = o.status;
+          } finally {
+            selectElement.disabled = false;
+          }
         });
         
         listContainer.appendChild(div);
       });
     } catch(err) {
-      listContainer.innerHTML = `<div class="p-8 text-center text-red-400">Error loading orders: Check if an Index is required by Firebase on 'timeISO'. ${err.message}</div>`;
+      listContainer.innerHTML = `<div class="p-8 text-center text-red-400">Error rendering logs. Confirm configuration rules match expected indexing criteria. ${err.message}</div>`;
     }
   }
 
-  loadAndRenderOrders();
+  if (tabActiveOrders && tabOrderHistory) {
+    tabActiveOrders.addEventListener('click', () => {
+      currentPipelineView = 'active';
+      tabActiveOrders.className = "font-display font-bold tracking-wider text-sm text-primary border-b-2 border-primary pb-2 px-2 transition-all uppercase";
+      tabOrderHistory.className = "font-display font-bold tracking-wider text-sm text-outline hover:text-slate-200 border-b-2 border-transparent pb-2 px-2 transition-all uppercase";
+      loadAndRenderOrders('active');
+    });
+
+    tabOrderHistory.addEventListener('click', () => {
+      currentPipelineView = 'history';
+      tabOrderHistory.className = "font-display font-bold tracking-wider text-sm text-primary border-b-2 border-primary pb-2 px-2 transition-all uppercase";
+      tabActiveOrders.className = "font-display font-bold tracking-wider text-sm text-outline hover:text-slate-200 border-b-2 border-transparent pb-2 px-2 transition-all uppercase";
+      loadAndRenderOrders('history');
+    });
+  }
+
+  loadAndRenderOrders('active');
 }
 
 // ====== GLOBAL INITIALIZATION ROUTER ======
