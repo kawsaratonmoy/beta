@@ -19,7 +19,6 @@ const CACHE_EXPIRY_KEY = 'store_products_expiry';
 const CACHE_TTL = 5 * 60 * 1000;
 
 // ====== EMERGENCY FULL MATRIX REBUILD ======
-// Automatically runs once to migrate your existing store to the Ledger system
 async function emergencyRebuildMatrix() {
   const snapshot = await getDocs(collection(db, 'products'));
   const productsList = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -85,10 +84,8 @@ async function loadProducts(forceRefresh = false) {
         const ledgerRef = doc(db, 'store_data', 'shard_ledger');
         let ledgerSnap = await getDoc(ledgerRef);
         
-        // Auto-migration if ledger doesn't exist yet
         if (!ledgerSnap.exists()) {
           console.warn("Ledger missing. Checking privileges...");
-          // Ensure ONLY authenticated admins attempt the matrix rebuild
           if (auth.currentUser) {
               console.log("Admin detected. Running initial migration to Delta Sync...");
               await emergencyRebuildMatrix();
@@ -99,7 +96,6 @@ async function loadProducts(forceRefresh = false) {
           }
         }
         
-        // Ensure ledgerSnap exists before proceeding
         if (ledgerSnap.exists()) {
             const shardCount = ledgerSnap.data().shardCount || 1;
             const shardPromises = [];
@@ -122,7 +118,6 @@ async function loadProducts(forceRefresh = false) {
       }
     }
 
-    // Merge Flat Live Inventory into memory
     try {
       const liveSnap = await getDoc(doc(db, 'store_data', 'live_inventory'));
       if (liveSnap.exists()) {
@@ -167,7 +162,6 @@ async function syncSingleProductToMatrix(productData, isDelete = false) {
   let ledgerData = ledgerSnap.data();
   const productId = productData.id;
   
-  // CASE A: EDITING OR DELETING
   if (ledgerData.productMap[productId] !== undefined) {
     const targetShardId = ledgerData.productMap[productId];
     const shardRef = doc(db, 'master_catalog_shards', `shard_${targetShardId}`);
@@ -184,7 +178,6 @@ async function syncSingleProductToMatrix(productData, isDelete = false) {
       delete ledgerData.productMap[productId];
       await updateDoc(ledgerRef, { productMap: ledgerData.productMap });
       
-      // Also remove from live inventory map
       const inventoryRef = doc(db, 'store_data', 'live_inventory');
       const invSnap = await getDoc(inventoryRef);
       if(invSnap.exists()) {
@@ -196,7 +189,6 @@ async function syncSingleProductToMatrix(productData, isDelete = false) {
     return;
   }
   
-  // CASE B: ADDING A BRAND NEW PRODUCT
   if (!isDelete) {
     let currentShardId = ledgerData.activeShard;
     let shardRef = doc(db, 'master_catalog_shards', `shard_${currentShardId}`);
@@ -555,7 +547,17 @@ async function initProductsPage() {
   function buildDynamicSpecFiltersUI() {
     if (!dynamicSpecContainer) return;
     const specMap = {};
-    products.forEach(p => {
+    
+    // Determine context category
+    const checkedCat = document.querySelector('input[name="cat-filter"]:checked');
+    const currentCategory = checkedCat ? checkedCat.value : 'All';
+
+    // Context-sensitive extraction logic
+    const contextualProducts = currentCategory === 'All' 
+      ? products 
+      : products.filter(p => p.category === currentCategory);
+
+    contextualProducts.forEach(p => {
       const parsedSpecs = parseSpecsData(p.specs);
       if (Object.keys(parsedSpecs).length > 0 && !parsedSpecs["Details"]) {
         Object.entries(parsedSpecs).forEach(([key, val]) => {
@@ -566,6 +568,15 @@ async function initProductsPage() {
             specMap[formattedKey].add(formattedVal);
           }
         });
+      }
+    });
+    
+    // Prune out checked parameters that are invalid or absent in the updated context
+    Object.keys(selectedSpecs).forEach(specName => {
+      if (!specMap[specName]) {
+        delete selectedSpecs[specName];
+      } else {
+        selectedSpecs[specName] = selectedSpecs[specName].filter(val => specMap[specName].has(val));
       }
     });
     
@@ -707,7 +718,14 @@ async function initProductsPage() {
 
   if (searchInput) searchInput.addEventListener('input', () => { currentPage = 1; renderGrid(); });
   if (sortSelect) sortSelect.addEventListener('change', () => { currentPage = 1; renderGrid(); });
-  if (categoryContainer) categoryContainer.addEventListener('change', () => { currentPage = 1; renderGrid(); });
+  
+  if (categoryContainer) {
+    categoryContainer.addEventListener('change', () => { 
+      currentPage = 1; 
+      buildDynamicSpecFiltersUI(); 
+      renderGrid(); 
+    });
+  }
 
   buildDynamicSpecFiltersUI();
   renderGrid();
