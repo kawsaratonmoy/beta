@@ -55,7 +55,6 @@ function showToast(message) {
 }
 
 // ====== EMERGENCY FULL MATRIX REBUILD ======
-// Automatically runs once to migrate your existing store to the Ledger system
 async function emergencyRebuildMatrix() {
   const snapshot = await getDocs(collection(db, 'products'));
   const productsList = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -121,7 +120,6 @@ async function loadProducts(forceRefresh = false) {
         const ledgerRef = doc(db, 'store_data', 'shard_ledger');
         let ledgerSnap = await getDoc(ledgerRef);
         
-        // Auto-migration if ledger doesn't exist yet
         if (!ledgerSnap.exists()) {
           console.warn("Ledger missing. Checking privileges...");
           if (auth.currentUser) {
@@ -176,7 +174,7 @@ async function loadProducts(forceRefresh = false) {
 
     cachedProducts = products;
     productsMap.clear();
-    products.forEach(p => productsMap.set(p.id, p));
+    products.forEach(p => { if (p && p.id) productsMap.set(p.id, p); });
     return products;
   })();
 
@@ -258,7 +256,7 @@ function shuffle(array) {
 }
 
 function calculateDeliveryFee(address) {
-  const lowerAddr = address.toLowerCase();
+  const lowerAddr = (address || '').toLowerCase();
   if (lowerAddr.includes("savar")) return 70;
   else if (lowerAddr.includes("dhaka")) return 110;
   return 150;
@@ -387,7 +385,7 @@ window.addToCart = function(productId, qty = 1) {
       alert(`Limit reached! Only ${product.stock} available in stock.`);
       return;
     }
-    cart.push({ id: productId, name: product.name, color: product.color || '', price: finalPrice, image: product.images?.[0] || 'logo.png', qty: qty, isPreOrder: isPreOrder });
+    cart.push({ id: productId, name: product.name || 'Premium Product', color: product.color || '', price: finalPrice, image: product.images?.[0] || 'logo.png', qty: qty, isPreOrder: isPreOrder });
   }
   saveCart(cart);
   showToast('Added to cart!');
@@ -467,19 +465,21 @@ function updateCartUI() {
   if (totalEl) totalEl.innerHTML = `<strong>Total: ৳${total}</strong>`;
 }
 
-function createProductCard(p, products) {
+function createProductCard(p, productsList) {
+  if (!p) return document.createElement('div');
   const isUpcoming = p.availability === 'Upcoming';
   const isOOS = !isUpcoming && Number(p.stock) <= 0 && p.availability !== 'Pre Order';
   const isPreOrder = p.availability === 'Pre Order';
   const hasDiscount = Number(p.discount) > 0;
   const price = Number(p.price) || 0;
   const finalPrice = hasDiscount ? (price - Number(p.discount)) : price;
-  const images = p.images || [];
+  const images = Array.isArray(p.images) ? p.images : [];
+  const pName = p.name || 'Unnamed Product';
 
-  const sameName = products.filter(other => other.name.toLowerCase() === p.name.toLowerCase());
-  let slug = p.name.toLowerCase().replace(/\s+/g, '-');
+  const sameName = Array.isArray(productsList) ? productsList.filter(other => other && other.name && other.name.toLowerCase() === pName.toLowerCase()) : [];
+  let slug = pName.toLowerCase().replace(/\s+/g, '-');
   if (sameName.length > 1 && p.color) {
-    slug += '-' + p.color.toLowerCase().replace(/\s+/g, '-');
+    slug += '-' + String(p.color).toLowerCase().replace(/\s+/g, '-');
   }
 
   const card = document.createElement('div');
@@ -492,7 +492,7 @@ function createProductCard(p, products) {
   
   card.innerHTML = `
     <div class="aspect-[4/5] bg-surface-container-lowest relative overflow-hidden cursor-pointer flex-shrink-0" onclick="window.location.href='product.html?slug=${slug}'">
-      <img class="w-full h-full object-cover grayscale group-hover:grayscale-0 transition-all duration-700 scale-105 group-hover:scale-100" src="${images[0] || 'logo.png'}" alt="${p.name}">
+      <img class="w-full h-full object-cover grayscale group-hover:grayscale-0 transition-all duration-700 scale-105 group-hover:scale-100" src="${images[0] || 'logo.png'}" alt="${pName}">
       <div class="absolute top-4 left-4 right-4 flex flex-wrap z-10">${badgeHTML}</div>
       ${!isOOS && !isUpcoming ?
       `<button class="absolute bottom-4 right-4 w-12 h-12 bg-surface-bright/80 backdrop-blur-md rounded-full flex items-center justify-center text-primary opacity-0 group-hover:opacity-100 transition-all duration-300 translate-y-4 group-hover:translate-y-0 shadow-2xl z-20" data-id="${p.id}" onclick="event.stopPropagation(); window.addToCart('${p.id}');">
@@ -502,7 +502,7 @@ function createProductCard(p, products) {
     <div class="p-6 cursor-pointer flex-1 flex flex-col justify-between" onclick="window.location.href='product.html?slug=${slug}'">
       <div>
         <div class="flex justify-between items-start mb-2 gap-2">
-          <h3 class="text-xl font-bold tracking-tight line-clamp-1">${p.name}</h3>
+          <h3 class="text-xl font-bold tracking-tight line-clamp-1">${pName}</h3>
           <span class="text-primary font-mono font-bold whitespace-nowrap">${isUpcoming ? 'TBA' : '৳' + finalPrice}</span>
         </div>
         <p class="text-sm text-outline mb-4 line-clamp-2">${p.description || 'Premium component.'}</p>
@@ -520,39 +520,44 @@ function createProductCard(p, products) {
 async function initHomePage() {
   const productsContainer = document.getElementById('interest-products');
   const products = await loadProducts();
-  if (products.length === 0) return;
+  if (!products || products.length === 0) return;
 
   const heroSection = document.getElementById('hero-section');
   if (heroSection) {
-      const randomProduct = products[Math.floor(Math.random() * products.length)];
-      const titleParts = randomProduct.name.split(' ');
-      const p1 = titleParts.slice(0, 2).join(' ');
-      const p2 = titleParts.slice(2).join(' ') || 'EDITION';
-      
-      if(document.getElementById('hero-tag')) document.getElementById('hero-tag').textContent = `Featured ${randomProduct.category || 'Gear'}`;
-      if(document.getElementById('hero-title')) {
-        document.getElementById('hero-title').innerHTML = `${p1} <br/><span class="text-transparent bg-clip-text bg-gradient-to-br from-primary to-primary-container">${p2}</span>`;
-        document.getElementById('hero-title').classList.remove('shimmer', 'text-transparent');
+      const validHeroProducts = products.filter(p => p && p.name);
+      if (validHeroProducts.length > 0) {
+        const randomProduct = validHeroProducts[Math.floor(Math.random() * validHeroProducts.length)];
+        const titleParts = randomProduct.name.split(' ');
+        const p1 = titleParts.slice(0, 2).join(' ');
+        const p2 = titleParts.slice(2).join(' ') || 'EDITION';
+        
+        if(document.getElementById('hero-tag')) document.getElementById('hero-tag').textContent = `Featured ${randomProduct.category || 'Gear'}`;
+        if(document.getElementById('hero-title')) {
+          document.getElementById('hero-title').innerHTML = `${p1} <br/><span class="text-transparent bg-clip-text bg-gradient-to-br from-primary to-primary-container">${p2}</span>`;
+          document.getElementById('hero-title').classList.remove('shimmer', 'text-transparent');
+        }
+        if(document.getElementById('hero-desc')) document.getElementById('hero-desc').textContent = randomProduct.description || "Experience premium mechanical artistry.";
+        
+        const imgEl = document.getElementById('hero-img');
+        if(imgEl && randomProduct.images && randomProduct.images[0]) {
+          imgEl.src = randomProduct.images[0];
+          imgEl.classList.remove('shimmer');
+        }
+        
+        const sameName = products.filter(other => other && other.name && other.name.toLowerCase() === randomProduct.name.toLowerCase());
+        let slug = randomProduct.name.toLowerCase().replace(/\s+/g, '-');
+        if (sameName.length > 1 && randomProduct.color) slug += '-' + randomProduct.color.toLowerCase().replace(/\s+/g, '-');
+        
+        if(document.getElementById('hero-link')) document.getElementById('hero-link').href = `product.html?slug=${slug}`;
+        heroSection.classList.remove('opacity-0');
       }
-      if(document.getElementById('hero-desc')) document.getElementById('hero-desc').textContent = randomProduct.description || "Experience premium mechanical artistry.";
-      
-      const imgEl = document.getElementById('hero-img');
-      if(imgEl && randomProduct.images && randomProduct.images[0]) {
-        imgEl.src = randomProduct.images[0];
-        imgEl.classList.remove('shimmer');
-      }
-      
-      const sameName = products.filter(other => other.name.toLowerCase() === randomProduct.name.toLowerCase());
-      let slug = randomProduct.name.toLowerCase().replace(/\s+/g, '-');
-      if (sameName.length > 1 && randomProduct.color) slug += '-' + randomProduct.color.toLowerCase().replace(/\s+/g, '-');
-      
-      if(document.getElementById('hero-link')) document.getElementById('hero-link').href = `product.html?slug=${slug}`;
-      heroSection.classList.remove('opacity-0');
   }
 
   if (productsContainer) {
     productsContainer.innerHTML = '';
-    shuffle(products).slice(0, 8).forEach(p => productsContainer.appendChild(createProductCard(p, products)));
+    shuffle(products).slice(0, 8).forEach(p => {
+      if (p) productsContainer.appendChild(createProductCard(p, products));
+    });
   }
 }
 
@@ -572,7 +577,7 @@ async function initProductsPage() {
   let currentPage = 1;
   const itemsPerPage = 21;
   let selectedSpecs = {};
-  const categories = ['All', ...new Set(products.map(p => p.category).filter(Boolean))];
+  const categories = ['All', ...new Set(products.map(p => p ? p.category : null).filter(Boolean))];
   
   if (categoryContainer) {
     categoryContainer.innerHTML = categories.map(cat => `
@@ -592,20 +597,10 @@ async function initProductsPage() {
       const style = document.createElement('style');
       style.id = 'custom-filter-scrollbar-style';
       style.innerHTML = `
-        .custom-scrollbar::-webkit-scrollbar {
-          width: 4px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-track {
-          background: rgba(255, 255, 255, 0.02);
-          border-radius: 4px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-thumb {
-          background: rgba(255, 255, 255, 0.1);
-          border-radius: 4px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-          background: rgba(255, 255, 255, 0.2);
-        }
+        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: rgba(255, 255, 255, 0.02); border-radius: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.1); border-radius: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.2); border-radius: 4px; }
       `;
       document.head.appendChild(style);
     }
@@ -616,24 +611,27 @@ async function initProductsPage() {
 
     const contextualProducts = currentCategory === 'All' 
       ? products 
-      : products.filter(p => p.category === currentCategory);
+      : products.filter(p => p && p.category === currentCategory);
 
     contextualProducts.forEach(p => {
-      const parsedSpecs = parseSpecsData(p.specs);
-      if (Object.keys(parsedSpecs).length > 0 && !parsedSpecs["Details"]) {
-        Object.entries(parsedSpecs).forEach(([key, val]) => {
-          if (key && val && key.toLowerCase() !== 'id') {
-            const formattedKey = key.trim();
-            // Requirement 1: Strip standard brackets and contents inside them for the filter option list
-            let formattedVal = val.toString().trim();
-            formattedVal = formattedVal.replace(/\s*[\(\[][^\]\)]*[\)\]]/g, '').trim();
-            
-            if (formattedVal) {
-              if (!specMap[formattedKey]) specMap[formattedKey] = new Set();
-              specMap[formattedKey].add(formattedVal);
+      try {
+        const parsedSpecs = parseSpecsData(p.specs);
+        if (parsedSpecs && Object.keys(parsedSpecs).length > 0 && !parsedSpecs["Details"]) {
+          Object.entries(parsedSpecs).forEach(([key, val]) => {
+            if (key && val && key.toLowerCase() !== 'id') {
+              const formattedKey = key.trim();
+              let formattedVal = val.toString().trim();
+              formattedVal = formattedVal.replace(/\s*[\(\[][^\]\)]*[\)\]]/g, '').trim();
+              
+              if (formattedVal) {
+                if (!specMap[formattedKey]) specMap[formattedKey] = new Set();
+                specMap[formattedKey].add(formattedVal);
+              }
             }
-          }
-        });
+          });
+        }
+      } catch (err) {
+        console.error("Failed handling single item spec structure safely:", err);
       }
     });
 
@@ -641,13 +639,19 @@ async function initProductsPage() {
       if (!specMap[specName]) {
         delete selectedSpecs[specName];
       } else {
-        selectedSpecs[specName] = selectedSpecs[specName].filter(val => specMap[specName].has(val));
+        if (Array.isArray(selectedSpecs[specName])) {
+          selectedSpecs[specName] = selectedSpecs[specName].filter(val => specMap[specName] && specMap[specName].has && specMap[specName].has(val));
+        } else {
+          selectedSpecs[specName] = [];
+        }
       }
     });
     
     dynamicSpecContainer.innerHTML = Object.entries(specMap).map(([specName, uniqueValues]) => {
-      if (!selectedSpecs[specName]) selectedSpecs[specName] = [];
-      const optionsHTML = Array.from(uniqueValues).map(val => {
+      if (!Array.isArray(selectedSpecs[specName])) selectedSpecs[specName] = [];
+      const safeUniqueValues = uniqueValues && typeof uniqueValues.forEach === 'function' ? Array.from(uniqueValues) : [];
+      
+      const optionsHTML = safeUniqueValues.map(val => {
         const isChecked = selectedSpecs[specName].includes(val) ? 'checked' : '';
         return `
           <label class="flex items-center gap-3 cursor-pointer group py-1 px-1.5 rounded-lg hover:bg-surface-variant/30 transition-colors">
@@ -669,6 +673,7 @@ async function initProductsPage() {
       cb.addEventListener('change', (e) => {
         const specName = e.target.getAttribute('data-spec');
         const value = e.target.value;
+        if (!Array.isArray(selectedSpecs[specName])) selectedSpecs[specName] = [];
         if (e.target.checked) {
           if (!selectedSpecs[specName].includes(value)) selectedSpecs[specName].push(value);
         } else {
@@ -691,10 +696,10 @@ async function initProductsPage() {
   if (urlSearch && searchInput) searchInput.value = urlSearch;
 
   function renderGrid() {
-    let result = [...products];
+    let result = [...products].filter(Boolean);
     if (searchInput && searchInput.value) {
       const q = searchInput.value.toLowerCase();
-      result = result.filter(p => p.name.toLowerCase().includes(q) || (p.description && p.description.toLowerCase().includes(q)));
+      result = result.filter(p => (p.name && p.name.toLowerCase().includes(q)) || (p.description && p.description.toLowerCase().includes(q)));
     }
 
     const checkedCat = document.querySelector('input[name="cat-filter"]:checked');
@@ -703,14 +708,18 @@ async function initProductsPage() {
     }
 
     Object.entries(selectedSpecs).forEach(([specKey, allowedValues]) => {
-      if (allowedValues.length > 0) {
+      if (Array.isArray(allowedValues) && allowedValues.length > 0) {
         result = result.filter(p => {
-          const parsedSpecs = parseSpecsData(p.specs);
-          if (!parsedSpecs[specKey]) return false;
-          // Requirement 1: Normalize product value contents by removing brackets before checking allowed selection inclusions
-          const productSpecVal = parsedSpecs[specKey].toString().trim();
-          const cleanedProductSpecVal = productSpecVal.replace(/\s*[\(\[][^\]\)]*[\)\]]/g, '').trim();
-          return allowedValues.includes(cleanedProductSpecVal);
+          try {
+            const parsedSpecs = parseSpecsData(p.specs);
+            if (!parsedSpecs || !parsedSpecs[specKey]) return false;
+            const productSpecVal = parsedSpecs[specKey].toString().trim();
+            const cleanedProductSpecVal = productSpecVal.replace(/\s*[\(\[][^\]\)]*[\)\]]/g, '').trim();
+            return allowedValues.includes(cleanedProductSpecVal);
+          } catch (err) {
+            console.error("Safely bypassed row structural mismatch parsing specs filter:", err);
+            return false;
+          }
         });
       }
     });
@@ -718,9 +727,9 @@ async function initProductsPage() {
     if (sortSelect) {
       const sortVal = sortSelect.value;
       if (sortVal === 'price-low') {
-        result.sort((a, b) => (Number(a.price) - Number(a.discount || 0)) - (Number(b.price) - Number(b.discount || 0)));
+        result.sort((a, b) => (Number(a.price || 0) - Number(a.discount || 0)) - (Number(b.price || 0) - Number(b.discount || 0)));
       } else if (sortVal === 'price-high') {
-        result.sort((a, b) => (Number(b.price) - Number(b.discount || 0)) - (Number(a.price) - Number(a.discount || 0)));
+        result.sort((a, b) => (Number(b.price || 0) - Number(b.discount || 0)) - (Number(a.price || 0) - Number(a.discount || 0)));
       }
     }
 
@@ -735,7 +744,9 @@ async function initProductsPage() {
       return;
     }
 
-    paginatedItems.forEach(p => container.appendChild(createProductCard(p, products)));
+    paginatedItems.forEach(p => {
+      if (p) container.appendChild(createProductCard(p, products));
+    });
     renderPaginationControls(totalPages);
   }
 
@@ -808,10 +819,12 @@ async function initProductPage() {
   let product = null;
 
   for (const p of products) {
-    const sameName = products.filter(other => other.name.toLowerCase() === p.name.toLowerCase());
-    let slug = p.name.toLowerCase().replace(/\s+/g, '-');
-    if (sameName.length > 1 && p.color) slug += '-' + p.color.toLowerCase().replace(/\s+/g, '-');
-    if (slug === urlSlug) { product = p; break; }
+    if (p && p.name) {
+      const sameName = products.filter(other => other && other.name && other.name.toLowerCase() === p.name.toLowerCase());
+      let slug = p.name.toLowerCase().replace(/\s+/g, '-');
+      if (sameName.length > 1 && p.color) slug += '-' + p.color.toLowerCase().replace(/\s+/g, '-');
+      if (slug === urlSlug) { product = p; break; }
+    }
   }
 
   if (!product) {
@@ -852,7 +865,7 @@ async function initProductPage() {
   if (specsTable) {
     specsTable.innerHTML = '';
     const parsedSpecs = parseSpecsData(product.specs);
-    if (Object.keys(parsedSpecs).length > 0) {
+    if (parsedSpecs && Object.keys(parsedSpecs).length > 0) {
       Object.entries(parsedSpecs).forEach(([k, v]) => {
         const row = document.createElement('tr');
         row.className = "border-b border-white/5";
@@ -909,14 +922,14 @@ async function initCheckoutPage() {
   let hasPreOrder = false;
 
   if (singleProductId) {
-    const p = products.find(x => x.id === singleProductId);
+    const p = products.find(x => x && x.id === singleProductId);
     if (!p) {
       alert('Product not found.');
       window.location.href = 'index.html';
       return;
     }
-    const unitPrice = Number(p.price) - Number(p.discount || 0);
-    checkoutItems.push({ id: p.id, name: p.name, color: p.color || '', price: unitPrice, image: p.images?.[0] || 'logo.png', qty: 1, isPreOrder: p.availability === 'Pre Order' });
+    const unitPrice = Number(p.price || 0) - Number(p.discount || 0);
+    checkoutItems.push({ id: p.id, name: p.name || 'Premium Product', color: p.color || '', price: unitPrice, image: p.images?.[0] || 'logo.png', qty: 1, isPreOrder: p.availability === 'Pre Order' });
     if (p.availability === 'Pre Order') hasPreOrder = true;
   } else {
     const cart = getCart();
@@ -926,7 +939,7 @@ async function initCheckoutPage() {
       return;
     }
     cart.forEach(item => {
-      const p = products.find(pr => pr.id === item.id);
+      const p = products.find(pr => pr && pr.id === item.id);
       if (p) {
         item.isPreOrder = p.availability === 'Pre Order';
         if (item.isPreOrder) hasPreOrder = true;
@@ -1069,7 +1082,7 @@ async function initCheckoutPage() {
             const snap = productSnaps[i];
             if (!snap.exists()) throw new Error(`Product ${checkoutItems[i].name} does not exist.`);
             const data = snap.data();
-            if (data.availability !== 'Pre Order' && Number(data.stock) < checkoutItems[i].qty) {
+            if (data.availability !== 'Pre Order' && Number(data.stock || 0) < checkoutItems[i].qty) {
               throw new Error(`Insufficient stock for ${checkoutItems[i].name}. Only ${data.stock} units left.`);
             }
           }
@@ -1080,7 +1093,7 @@ async function initCheckoutPage() {
           for (let i = 0; i < checkoutItems.length; i++) {
             const snap = productSnaps[i];
             const data = snap.data();
-            const currentStock = Number(data.stock);
+            const currentStock = Number(data.stock || 0);
             const item = checkoutItems[i];
             if (currentStock !== -1 && data.availability !== 'Pre Order') {
               const newStock = currentStock - item.qty;
@@ -1204,12 +1217,13 @@ async function setupInventoryAdmin() {
     if (!listContainer) return;
     listContainer.innerHTML = '';
     products.forEach(p => {
+      if (!p) return;
       const div = document.createElement('div');
       div.className = 'bg-surface-container-low p-4 rounded-xl border border-white/5 flex justify-between items-center gap-4';
       div.innerHTML = `
         <div>
-          <h4 class="font-bold">${p.name}</h4>
-          <p class="text-xs text-outline">Category: ${p.category || '-'} | Price: ৳${p.price} | Stock: ${p.stock}</p>
+          <h4 class="font-bold">${p.name || 'Unnamed'}</h4>
+          <p class="text-xs text-outline">Category: ${p.category || '-'} | Price: ৳${p.price || 0} | Stock: ${p.stock || 0}</p>
         </div>
         <div class="flex gap-2">
           <button class="edit-btn text-xs bg-primary/10 text-primary px-3 py-1.5 rounded-lg font-bold hover:bg-primary/20 transition-colors">Edit</button>
@@ -1231,7 +1245,7 @@ async function setupInventoryAdmin() {
         document.getElementById('p-meta-desc').value = p.metaDescription || '';
         document.getElementById('p-detailed-desc').value = p.detailedDescription || '';
         document.getElementById('p-images').value = (p.images || []).join('\n');
-        if (typeof p.specs === 'object') {
+        if (typeof p.specs === 'object' && p.specs !== null) {
           document.getElementById('p-specs').value = Object.entries(p.specs).map(([k,v])=>`${k}: ${v}`).join('\n');
         } else {
           document.getElementById('p-specs').value = p.specs || '';
@@ -1240,7 +1254,7 @@ async function setupInventoryAdmin() {
         document.getElementById('submit-btn').innerHTML = '<span class="material-symbols-outlined">save</span> Save Changes';
       };
       div.querySelector('.del-btn').onclick = async () => {
-        if (confirm(`Delete ${p.name}? This will remove it instantly.`)) {
+        if (confirm(`Delete ${p.name || 'this item'}? This will remove it instantly.`)) {
           await deleteDoc(doc(db, 'products', p.id));
           await syncSingleProductToMatrix({ id: p.id }, true);
           products = await loadProducts(true);
@@ -1323,7 +1337,7 @@ async function setupOrdersAdmin() {
           const dateString = o.timeISO ? new Date(o.timeISO).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' }) : 'Unknown Time';
           let itemsHTML = (o.items || []).map(i => `
             <div class="flex justify-between items-center text-sm border-b border-white/5 py-1 last:border-0">
-              <span class="text-slate-200 font-medium">${i.productName} ${i.color ? `(${i.color})` : ''} <span class="text-outline text-xs">× ${i.quantity}</span></span>
+              <span class="text-slate-200 font-medium">${i.productName || 'Product'} ${i.color ? `(${i.color})` : ''} <span class="text-outline text-xs">× ${i.quantity}</span></span>
               <span class="font-mono text-xs font-bold text-slate-400">৳${(i.unitPrice * i.quantity).toFixed(2)}</span>
             </div>
           `).join('');
@@ -1340,9 +1354,9 @@ async function setupOrdersAdmin() {
             <div class="flex flex-col md:flex-row justify-between md:items-center gap-4 border-b border-white/5 pb-4">
               <div>
                 <div class="font-mono text-xs text-outline mb-1">ID: ${oId} | ${dateString}</div>
-                <h3 class="font-bold text-lg">${o.customerName}</h3>
+                <h3 class="font-bold text-lg">${o.customerName || 'Customer'}</h3>
                 <div class="text-sm text-outline flex items-center gap-3 mt-1">
-                  <a href="tel:${o.phone}" class="hover:text-primary transition-colors flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">call</span> ${o.phone}</a>
+                  <a href="tel:${o.phone}" class="hover:text-primary transition-colors flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">call</span> ${o.phone || ''}</a>
                 </div>
               </div>
               <div class="flex flex-col items-end gap-2">
@@ -1359,9 +1373,9 @@ async function setupOrdersAdmin() {
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
                 <h4 class="text-xs uppercase tracking-widest text-outline mb-2">Delivery Drop</h4>
-                <p class="text-sm text-slate-300 leading-relaxed font-medium">${o.address}</p>
+                <p class="text-sm text-slate-300 leading-relaxed font-medium">${o.address || ''}</p>
                 <div class="mt-3 bg-surface-container-lowest/50 p-3 rounded-xl border border-white/5 text-xs space-y-1">
-                  <div><span class="text-outline">Settlement:</span> <span class="font-bold text-slate-300">${o.paymentMethod}</span></div>
+                  <div><span class="text-outline">Settlement:</span> <span class="font-bold text-slate-300">${o.paymentMethod || '-'}</span></div>
                   <div><span class="text-outline">TXN Identifier:</span> <span class="font-mono font-bold text-primary">${o.transactionId || '-'}</span></div>
                 </div>
               </div>
@@ -1371,15 +1385,15 @@ async function setupOrdersAdmin() {
                   <div class="max-h-32 overflow-y-auto pr-1 custom-scrollbar space-y-1">${itemsHTML}</div>
                   <div class="border-t border-white/5 pt-2 flex justify-between text-xs font-semibold text-outline">
                     <span>Subtotal / Delivery Charge</span>
-                    <span class="font-mono">৳${o.subtotal.toFixed(2)} / ৳${o.deliveryFee}</span>
+                    <span class="font-mono">৳${(o.subtotal || 0).toFixed(2)} / ৳${o.deliveryFee || 0}</span>
                   </div>
                   <div class="flex justify-between text-sm font-black text-on-surface">
                     <span>Aggregate Total</span>
-                    <span class="font-mono text-primary">৳${o.total.toFixed(2)}</span>
+                    <span class="font-mono text-primary">৳${(o.total || 0).toFixed(2)}</span>
                   </div>
                   <div class="flex justify-between text-xs font-bold text-outline">
                     <span>Paid / Outstanding</span>
-                    <span class="font-mono ${o.dueAmount > 0 ? 'text-amber-400' : 'text-emerald-400'}">৳${o.paidAmount} / ৳${o.dueAmount}</span>
+                    <span class="font-mono ${Number(o.dueAmount || 0) > 0 ? 'text-amber-400' : 'text-emerald-400'}">৳${o.paidAmount || 0} / ৳${o.dueAmount || 0}</span>
                   </div>
                 </div>
               </div>
