@@ -87,25 +87,35 @@ async function loadProducts(forceRefresh = false) {
         
         // Auto-migration if ledger doesn't exist yet
         if (!ledgerSnap.exists()) {
-          console.warn("Ledger missing. Running initial migration to Delta Sync...");
-          await emergencyRebuildMatrix();
-          ledgerSnap = await getDoc(ledgerRef);
+          console.warn("Ledger missing. Checking privileges...");
+          // Ensure ONLY authenticated admins attempt the matrix rebuild
+          if (auth.currentUser) {
+              console.log("Admin detected. Running initial migration to Delta Sync...");
+              await emergencyRebuildMatrix();
+              ledgerSnap = await getDoc(ledgerRef);
+          } else {
+              console.warn("Migration aborted: Admin privileges required to build shards. Returning empty catalog.");
+              return [];
+          }
         }
         
-        const shardCount = ledgerSnap.data().shardCount || 1;
-        const shardPromises = [];
-        
-        for (let i = 0; i < shardCount; i++) {
-          shardPromises.push(getDoc(doc(db, 'master_catalog_shards', `shard_${i}`)));
+        // Ensure ledgerSnap exists before proceeding
+        if (ledgerSnap.exists()) {
+            const shardCount = ledgerSnap.data().shardCount || 1;
+            const shardPromises = [];
+            
+            for (let i = 0; i < shardCount; i++) {
+              shardPromises.push(getDoc(doc(db, 'master_catalog_shards', `shard_${i}`)));
+            }
+            
+            const shardSnaps = await Promise.all(shardPromises);
+            shardSnaps.forEach(snap => {
+              if (snap.exists()) { products = products.concat(snap.data().items || []); }
+            });
+            
+            localStorage.setItem(CACHE_KEY, JSON.stringify(products));
+            localStorage.setItem(CACHE_EXPIRY_KEY, (now + CACHE_TTL).toString());
         }
-        
-        const shardSnaps = await Promise.all(shardPromises);
-        shardSnaps.forEach(snap => {
-          if (snap.exists()) { products = products.concat(snap.data().items || []); }
-        });
-        
-        localStorage.setItem(CACHE_KEY, JSON.stringify(products));
-        localStorage.setItem(CACHE_EXPIRY_KEY, (now + CACHE_TTL).toString());
       } catch (err) {
         console.error('Error loading products:', err);
         return [];
@@ -146,8 +156,12 @@ async function syncSingleProductToMatrix(productData, isDelete = false) {
   let ledgerSnap = await getDoc(ledgerRef);
   
   if (!ledgerSnap.exists()) {
-    await emergencyRebuildMatrix();
-    ledgerSnap = await getDoc(ledgerRef);
+      if(auth.currentUser) {
+          await emergencyRebuildMatrix();
+          ledgerSnap = await getDoc(ledgerRef);
+      } else {
+          throw new Error("Admin privileges required to sync matrix.");
+      }
   }
   
   let ledgerData = ledgerSnap.data();
