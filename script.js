@@ -17,6 +17,7 @@ let fetchPromise = null;
 const CACHE_KEY = 'store_products_data';
 const CACHE_EXPIRY_KEY = 'store_products_expiry';
 const CACHE_TTL = 5 * 60 * 1000;
+
 // ====== SLICK TOAST NOTIFICATION ======
 function showToast(message) {
   let container = document.getElementById('toast-container');
@@ -592,10 +593,7 @@ async function initProductsPage() {
   function buildDynamicSpecFiltersUI() {
     if (!dynamicSpecContainer) return;
 
-    // Constrain the entire dynamic filters container so it never pushes down the page navigation
-    dynamicSpecContainer.className = "space-y-1 pt-4 border-t border-white/5 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar";
-
-    // Inject premium, low-profile custom scrollbar styles & details marker hiders
+    // Inject premium, low-profile custom scrollbar styles & details marker hiders globally
     if (!document.getElementById('custom-filter-scrollbar-style')) {
       const style = document.createElement('style');
       style.id = 'custom-filter-scrollbar-style';
@@ -657,9 +655,9 @@ async function initProductsPage() {
       }
     });
     
-    dynamicSpecContainer.innerHTML = Object.entries(specMap).map(([specName, uniqueValues], index) => {
+    const optionsHTML = Object.entries(specMap).map(([specName, uniqueValues], index) => {
       if (!selectedSpecs[specName]) selectedSpecs[specName] = [];
-      const optionsHTML = Array.from(uniqueValues).map(val => {
+      const checkboxesHTML = Array.from(uniqueValues).map(val => {
         const isChecked = selectedSpecs[specName].includes(val) ? 'checked' : '';
         return `
           <label class="flex items-center gap-3 cursor-pointer group py-1 px-1.5 rounded-lg hover:bg-surface-variant/30 transition-colors">
@@ -678,10 +676,13 @@ async function initProductsPage() {
             <span class="text-[10px] font-bold uppercase tracking-widest text-outline block capitalize">${specName}</span>
             <span class="material-symbols-outlined text-outline group-hover:text-primary transition-transform duration-300 text-sm group-open:rotate-180">keyboard_arrow_down</span>
           </summary>
-          <div class="space-y-1 max-h-32 overflow-y-auto pr-1 mt-3 custom-scrollbar">${optionsHTML}</div>
+          <div class="space-y-1 max-h-32 overflow-y-auto pr-1 mt-3 custom-scrollbar">${checkboxesHTML}</div>
         </details>
       `;
     }).join('');
+
+    // Wrapped securely to preserve existing HTML classes without overwriting them
+    dynamicSpecContainer.innerHTML = `<div class="space-y-1 pt-4 border-t border-white/5 w-full">${optionsHTML}</div>`;
 
     document.querySelectorAll('.spec-checkbox').forEach(cb => {
       cb.addEventListener('change', (e) => {
