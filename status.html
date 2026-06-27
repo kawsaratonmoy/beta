@@ -97,6 +97,7 @@
 
   <main class="pt-16 pb-20 data-stream relative flex-grow overflow-x-hidden">
 
+
     <section class="max-w-7xl mx-auto px-8 mb-16">
       <div class="bg-surface-container-lowest/80 border border-primary/10 scanner-glow p-1 rounded-sm relative group overflow-hidden">
         <div class="absolute top-0 left-0 w-4 h-4 border-t-2 border-l-2 border-primary/40"></div>
@@ -332,15 +333,9 @@
 
           let deliveryText = '';
           if (isDelivered) {
-            if (order.deliveredAt) {
-              let dDate = typeof order.deliveredAt.toDate === 'function' 
-                ? order.deliveredAt.toDate() 
-                : new Date(order.deliveredAt);
-              const deliveredDate = dDate.toLocaleDateString('en-GB');
-              deliveryText = `<strong class="text-green-400">Delivered on: ${deliveredDate}</strong>`;
-            } else {
-              deliveryText = `<strong class="text-green-400">Status: Delivered</strong>`;
-            }
+            // FIX APPLIED HERE: changed order.deliveredAt to order.deliveredDate
+            const deliveredDate = order.deliveredDate ? new Date(order.deliveredDate).toLocaleDateString('en-GB') : 'N/A';
+            deliveryText = `<strong class="text-green-400">Delivered on: ${deliveredDate}</strong>`;
           } else {
             const days = hasPreOrderItem ? '20–40 days' : '3–7 days';
             deliveryText = `Est. Time: <strong class="text-primary">${days}</strong>`;
